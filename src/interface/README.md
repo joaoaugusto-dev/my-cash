@@ -2,6 +2,27 @@
 
 A new Flutter project.
 
+## Authentication Setup
+
+Create a local `.env` file in this folder with:
+
+```env
+SUPABASE_URL=
+SUPABASE_ANON_KEY=
+API_BASE_URL=http://localhost:3000
+OAUTH_REDIRECT_SCHEME=mycash
+OAUTH_REDIRECT_HOST=auth-callback
+```
+
+Use `mycash://auth-callback` as the redirect URL in Supabase and Android.
+
+Run the app with:
+
+```bash
+flutter pub get
+flutter run
+```
+
 ## Getting Started
 
 This project is a starting point for a Flutter application.
