@@ -25,6 +25,18 @@
 
 [Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
 
+## Supabase JWT Setup
+
+Create a local `.env` file in this folder with:
+
+```env
+PORT=3000
+SUPABASE_JWT_SECRET=
+CORS_ORIGIN=*
+```
+
+The backend validates the Supabase access token on `GET /auth/me`.
+
 ## Project setup
 
 ```bash
