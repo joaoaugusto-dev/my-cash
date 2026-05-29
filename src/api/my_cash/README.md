@@ -31,11 +31,20 @@ Create a local `.env` file in this folder with:
 
 ```env
 PORT=3000
-SUPABASE_JWT_SECRET=
+SUPABASE_URL=
+SUPABASE_SERVICE_ROLE_KEY=
 CORS_ORIGIN=*
 ```
 
-The backend validates the Supabase access token on `GET /auth/me`.
+Use the project URL in `SUPABASE_URL` and the project service role key in `SUPABASE_SERVICE_ROLE_KEY`. The backend no longer falls back to in-memory storage for transactions.
+
+Protected routes validate access tokens against Supabase JWKS at `GET /auth/v1/.well-known/jwks.json`.
+
+The backend validates the Supabase access token on `GET /auth/me` and resolves every financial record by authenticated user.
+
+The transactions domain uses a `transactions` table in Supabase with a `user_id` column so each user only sees their own entries and exits.
+
+To make the app functional, apply the SQL schema in [supabase/schema.sql](supabase/schema.sql) in the Supabase SQL Editor before starting the backend or Flutter app.
 
 ## Project setup
 
