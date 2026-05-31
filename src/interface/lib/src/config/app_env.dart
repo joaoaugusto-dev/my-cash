@@ -7,6 +7,8 @@ class AppEnv {
 
   static String get apiBaseUrl => _required('API_BASE_URL');
 
+  static String get googleWebClientId => _required('GOOGLE_WEB_CLIENT_ID');
+
   static String get oauthRedirectScheme =>
       dotenv.maybeGet('OAUTH_REDIRECT_SCHEME') ?? 'mycash';
 

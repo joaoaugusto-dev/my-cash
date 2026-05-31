@@ -12,9 +12,10 @@ SUPABASE_ANON_KEY=
 API_BASE_URL=http://localhost:3000
 OAUTH_REDIRECT_SCHEME=mycash
 OAUTH_REDIRECT_HOST=auth-callback
+GOOGLE_WEB_CLIENT_ID=
 ```
 
-Use `mycash://auth-callback` as the redirect URL in Supabase and Android.
+Use `mycash://auth-callback` as the redirect URL in Supabase and configure the Google Web Client ID in the same `.env` file. On Android, the native Google login uses that Web Client ID as `serverClientId`.
 
 Run the app with:
 

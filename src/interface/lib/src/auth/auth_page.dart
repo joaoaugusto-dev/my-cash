@@ -1,3 +1,4 @@
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -71,13 +72,34 @@ class _AuthPageState extends State<AuthPage> {
 
     try {
       final supabase = Supabase.instance.client;
-      final redirectTo = kIsWeb
-          ? Uri.base.origin
-          : '${AppEnv.oauthRedirectScheme}://${AppEnv.oauthRedirectHost}';
+      if (_shouldUseNativeGoogleSignIn) {
+        final googleSignIn = GoogleSignIn(
+          serverClientId: AppEnv.googleWebClientId,
+        );
+        final googleUser = await googleSignIn.signIn();
+
+        if (googleUser == null) {
+          return;
+        }
+
+        final googleAuth = await googleUser.authentication;
+        final idToken = googleAuth.idToken;
+
+        if (idToken == null || idToken.isEmpty) {
+          throw StateError('Nenhum ID Token foi retornado pelo Google.');
+        }
+
+        await supabase.auth.signInWithIdToken(
+          provider: OAuthProvider.google,
+          idToken: idToken,
+          accessToken: googleAuth.accessToken,
+        );
+        return;
+      }
 
       await supabase.auth.signInWithOAuth(
         OAuthProvider.google,
-        redirectTo: redirectTo,
+        redirectTo: Uri.base.origin,
       );
     } on AuthException catch (error) {
       _showMessage(error.message);
@@ -90,6 +112,12 @@ class _AuthPageState extends State<AuthPage> {
         });
       }
     }
+  }
+
+  bool get _shouldUseNativeGoogleSignIn {
+    return !kIsWeb &&
+        (defaultTargetPlatform == TargetPlatform.android ||
+            defaultTargetPlatform == TargetPlatform.iOS);
   }
 
   void _showMessage(String message) {
