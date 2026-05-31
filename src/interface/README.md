@@ -17,6 +17,14 @@ GOOGLE_WEB_CLIENT_ID=
 
 Use `mycash://auth-callback` as the redirect URL in Supabase and configure the Google Web Client ID in the same `.env` file. On Android, the native Google login uses that Web Client ID as `serverClientId`.
 
+For production builds, point `API_BASE_URL` to the deployed API, for example:
+
+```env
+API_BASE_URL=https://<your-vercel-deployment>.vercel.app/api
+```
+
+Run the backend deployment from `src/api/my_cash` with `vercel --prod`, then update the app `.env` before building the release artifact.
+
 Run the app with:
 
 ```bash
