@@ -59,6 +59,7 @@ alter table public.transactions enable row level security;
 create or replace function public.set_updated_at()
 returns trigger
 language plpgsql
+set search_path = pg_catalog, public
 as $$
 begin
   new.updated_at = now();
@@ -80,7 +81,7 @@ create or replace function public.handle_auth_user_upsert()
 returns trigger
 language plpgsql
 security definer
-set search_path = public
+set search_path = pg_catalog, public
 as $$
 begin
   insert into public.profiles (id, email, full_name, avatar_url, avatar_path)
@@ -115,6 +116,7 @@ for each row execute function public.handle_auth_user_upsert();
 create or replace function public.handle_user_profile_update()
 returns trigger
 language plpgsql
+set search_path = pg_catalog, public
 as $$
 begin
   new.updated_at = now();
@@ -126,6 +128,32 @@ drop trigger if exists on_profiles_updated on public.profiles;
 create trigger on_profiles_updated
 before update on public.profiles
 for each row execute function public.handle_user_profile_update();
+
+do $$
+declare
+  fn_signature text;
+begin
+  for fn_signature in
+    select format(
+      '%I.%I(%s)',
+      n.nspname,
+      p.proname,
+      pg_get_function_identity_arguments(p.oid)
+    )
+    from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public'
+      and p.proname in ('handle_auth_user_upsert', 'handle_new_user', 'rls_auto_enable')
+  loop
+    execute format(
+      'revoke execute on function %s from public, anon, authenticated',
+      fn_signature
+    );
+  end loop;
+end;
+$$;
+
+grant execute on function public.handle_auth_user_upsert() to service_role;
 
 drop policy if exists "Profiles are readable by owner" on public.profiles;
 create policy "Profiles are readable by owner"

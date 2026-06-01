@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../config/app_env.dart';
@@ -6,6 +7,7 @@ import '../finance/financial_transaction.dart';
 import '../finance/transactions_api_service.dart';
 import '../theme/app_theme_controller.dart';
 import '../widgets/finance_stat_card.dart';
+import 'profile_helpers.dart';
 import 'settings_page.dart';
 
 class HomePage extends StatefulWidget {
@@ -23,17 +25,25 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
+  static const String _avatarBucket = 'avatars';
+
   late final TransactionsApiService _apiService;
+  late final Future<SharedPreferences> _preferencesFuture;
   Future<FinancialDashboard>? _dashboardFuture;
+  String _resolvedAvatarUrl = '';
+  String _avatarStateKey = '';
+  bool _isResolvingAvatar = false;
 
   @override
   void initState() {
     super.initState();
+    _preferencesFuture = SharedPreferences.getInstance();
     _apiService = TransactionsApiService(
       apiBaseUrl: AppEnv.apiBaseUrl,
       accessToken: widget.session.accessToken,
     );
     _dashboardFuture = _loadDashboard();
+    _refreshResolvedAvatarUrl();
   }
 
   Future<FinancialDashboard> _loadDashboard() {
@@ -134,14 +144,113 @@ class _HomePageState extends State<HomePage> {
 
     if (mounted) {
       setState(() {});
+      await _refreshResolvedAvatarUrl();
     }
+  }
+
+  String _extractFirstName() {
+    final user =
+        Supabase.instance.client.auth.currentUser ?? widget.session.user;
+    final metadata = Map<String, dynamic>.from(user.userMetadata ?? const {});
+    final fullName = (metadata['full_name'] ?? metadata['name'] ?? '')
+        .toString()
+        .trim();
+
+    if (fullName.isNotEmpty) {
+      final parts = fullName.split(RegExp(r'\s+'));
+      if (parts.isNotEmpty && parts.first.trim().isNotEmpty) {
+        return parts.first.trim();
+      }
+    }
+
+    return 'Conta';
+  }
+
+  String _profileInitials() {
+    final user =
+        Supabase.instance.client.auth.currentUser ?? widget.session.user;
+    final metadata = Map<String, dynamic>.from(user.userMetadata ?? const {});
+    final fullName = (metadata['full_name'] ?? metadata['name'] ?? '')
+        .toString()
+        .trim();
+    return initialsFromProfile(fullName: fullName, email: user.email ?? '');
+  }
+
+  Future<void> _refreshResolvedAvatarUrl() async {
+    final user =
+        Supabase.instance.client.auth.currentUser ?? widget.session.user;
+    final metadata = Map<String, dynamic>.from(user.userMetadata ?? const {});
+    final avatarUrl = extractAvatarUrl(metadata);
+    final avatarPath = extractAvatarPath(metadata);
+    final avatarVersion = extractAvatarVersion(metadata);
+
+    final cacheIdentity = buildAvatarCacheIdentity(
+      userId: user.id,
+      avatarPath: avatarPath,
+      avatarUrl: avatarUrl,
+      avatarVersion: avatarVersion,
+    );
+    if (cacheIdentity == _avatarStateKey) {
+      return;
+    }
+
+    _avatarStateKey = cacheIdentity;
+    if (mounted) {
+      setState(() {
+        _isResolvingAvatar = true;
+      });
+    }
+
+    String resolvedUrl = '';
+    try {
+      final prefs = await _preferencesFuture;
+      final cachedUrl = await readCachedAvatarUrl(
+        prefs: prefs,
+        userId: user.id,
+        identity: cacheIdentity,
+      );
+      if (cachedUrl != null) {
+        resolvedUrl = cachedUrl;
+      } else if ((avatarPath ?? '').isNotEmpty) {
+        final signedUrl = await Supabase.instance.client.storage
+            .from(_avatarBucket)
+            .createSignedUrl(avatarPath!, 60 * 60 * 24);
+        resolvedUrl = buildAvatarCacheAwareUrl(signedUrl, avatarVersion);
+        await writeCachedAvatarUrl(
+          prefs: prefs,
+          userId: user.id,
+          identity: cacheIdentity,
+          avatarUrl: resolvedUrl,
+          expiresAt: DateTime.now().toUtc().add(avatarSignedUrlCacheDuration),
+        );
+      } else {
+        resolvedUrl = buildAvatarCacheAwareUrl(avatarUrl, avatarVersion);
+        await writeCachedAvatarUrl(
+          prefs: prefs,
+          userId: user.id,
+          identity: cacheIdentity,
+          avatarUrl: resolvedUrl,
+          expiresAt: DateTime.now().toUtc().add(avatarSignedUrlCacheDuration),
+        );
+      }
+    } catch (_) {
+      resolvedUrl = buildAvatarCacheAwareUrl(avatarUrl, avatarVersion);
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _resolvedAvatarUrl = resolvedUrl;
+      _isResolvingAvatar = false;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    final currentUser = Supabase.instance.client.auth.currentUser;
-    final userEmail =
-        currentUser?.email ?? widget.session.user.email ?? 'Conta autenticada';
+    final firstName = _extractFirstName();
+    final profileInitials = _profileInitials();
     final colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
@@ -224,7 +333,10 @@ class _HomePageState extends State<HomePage> {
               padding: const EdgeInsets.fromLTRB(20, 8, 20, 120),
               children: [
                 _HeaderHero(
-                  userEmail: userEmail,
+                  firstName: firstName,
+                  avatarUrl: _resolvedAvatarUrl,
+                  profileInitials: profileInitials,
+                  isResolvingAvatar: _isResolvingAvatar,
                   month: dashboard.summary.month,
                 ),
                 const SizedBox(height: 20),
@@ -302,9 +414,18 @@ class _HomePageState extends State<HomePage> {
 }
 
 class _HeaderHero extends StatelessWidget {
-  const _HeaderHero({required this.userEmail, required this.month});
+  const _HeaderHero({
+    required this.firstName,
+    required this.avatarUrl,
+    required this.profileInitials,
+    required this.isResolvingAvatar,
+    required this.month,
+  });
 
-  final String userEmail;
+  final String firstName;
+  final String avatarUrl;
+  final String profileInitials;
+  final bool isResolvingAvatar;
   final String month;
 
   @override
@@ -331,59 +452,68 @@ class _HeaderHero extends StatelessWidget {
           ),
         ],
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Olá, $userEmail',
+          Row(
+            children: [
+              CircleAvatar(
+                radius: 24,
+                backgroundColor: Colors.white.withValues(alpha: 0.16),
+                backgroundImage: avatarUrl.isNotEmpty
+                    ? NetworkImage(avatarUrl)
+                    : null,
+                child: isResolvingAvatar
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : avatarUrl.isEmpty
+                    ? Text(
+                        profileInitials,
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      )
+                    : null,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Olá, $firstName',
                   style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                     color: Colors.white,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  'Painel mensal de entradas e saídas sincronizado com a API.',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Colors.white.withValues(alpha: 0.84),
-                  ),
-                ),
-                const SizedBox(height: 14),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 8,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: Text(
-                    'Mês atual: $month',
-                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-              ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Painel mensal de entradas e saídas sincronizado com a API.',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: Colors.white.withValues(alpha: 0.84),
             ),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(height: 14),
           Container(
-            width: 64,
-            height: 64,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
               color: Colors.white.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(22),
+              borderRadius: BorderRadius.circular(999),
             ),
-            child: const Icon(
-              Icons.account_balance_rounded,
-              color: Colors.white,
-              size: 34,
+            child: Text(
+              'Mês atual: $month',
+              style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ),
         ],
