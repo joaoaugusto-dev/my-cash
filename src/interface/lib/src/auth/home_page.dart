@@ -4,12 +4,19 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../config/app_env.dart';
 import '../finance/financial_transaction.dart';
 import '../finance/transactions_api_service.dart';
+import '../theme/app_theme_controller.dart';
 import '../widgets/finance_stat_card.dart';
+import 'settings_page.dart';
 
 class HomePage extends StatefulWidget {
-  const HomePage({super.key, required this.session});
+  const HomePage({
+    super.key,
+    required this.session,
+    required this.themeController,
+  });
 
   final Session session;
+  final AppThemeController themeController;
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -55,10 +62,11 @@ class _HomePageState extends State<HomePage> {
     return '$day/$month';
   }
 
-  Color _transactionColor(FinancialTransactionType type) {
+  Color _transactionColor(BuildContext context, FinancialTransactionType type) {
+    final colorScheme = Theme.of(context).colorScheme;
     return type == FinancialTransactionType.income
-        ? const Color(0xFF1E8E5A)
-        : const Color(0xFFDD4B39);
+        ? colorScheme.tertiary
+        : colorScheme.error;
   }
 
   IconData _transactionIcon(FinancialTransactionType type) {
@@ -72,7 +80,9 @@ class _HomePageState extends State<HomePage> {
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
-      backgroundColor: const Color(0xFFF5F7FB),
+      backgroundColor: Theme.of(
+        context,
+      ).colorScheme.surface.withValues(alpha: 0.95),
       builder: (context) {
         return _TransactionComposerSheet(
           onSubmit: (transaction) async {
@@ -112,23 +122,44 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  Future<void> _openSettings() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => SettingsPage(
+          session: widget.session,
+          themeController: widget.themeController,
+        ),
+      ),
+    );
+
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final userEmail = widget.session.user.email ?? 'Conta autenticada';
+    final currentUser = Supabase.instance.client.auth.currentUser;
+    final userEmail =
+        currentUser?.email ?? widget.session.user.email ?? 'Conta autenticada';
+    final colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F7FB),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _openCreateTransactionSheet,
         icon: const Icon(Icons.add_rounded),
         label: const Text('Novo lançamento'),
       ),
       appBar: AppBar(
-        elevation: 0,
-        backgroundColor: Colors.transparent,
-        title: const Text('PJ-FINANC'),
+        title: const Text('MyCash'),
         actions: [
+          IconButton(
+            tooltip: 'Configurações',
+            onPressed: _openSettings,
+            icon: const Icon(Icons.tune_rounded),
+          ),
           TextButton.icon(
+            style: TextButton.styleFrom(foregroundColor: colorScheme.onPrimary),
             onPressed: () async {
               await Supabase.instance.client.auth.signOut();
             },
@@ -155,7 +186,7 @@ class _HomePageState extends State<HomePage> {
                   const Icon(
                     Icons.warning_rounded,
                     size: 56,
-                    color: Color(0xFFDD4B39),
+                    color: Colors.red,
                   ),
                   const SizedBox(height: 16),
                   Text(
@@ -186,8 +217,8 @@ class _HomePageState extends State<HomePage> {
 
             final topTransactions = dashboard.transactions.take(8).toList();
             final netColor = dashboard.summary.balance >= 0
-                ? const Color(0xFF1E8E5A)
-                : const Color(0xFFDD4B39);
+                ? colorScheme.tertiary
+                : colorScheme.error;
 
             return ListView(
               padding: const EdgeInsets.fromLTRB(20, 8, 20, 120),
@@ -219,21 +250,21 @@ class _HomePageState extends State<HomePage> {
                       value: _formatCurrency(dashboard.summary.income),
                       subtitle: '${dashboard.summary.entriesCount} registros',
                       icon: Icons.trending_up_rounded,
-                      color: const Color(0xFF1E8E5A),
+                      color: colorScheme.tertiary,
                     ),
                     FinanceStatCard(
                       title: 'Saídas',
                       value: _formatCurrency(dashboard.summary.expense),
                       subtitle: '${dashboard.summary.exitsCount} registros',
                       icon: Icons.trending_down_rounded,
-                      color: const Color(0xFFDD4B39),
+                      color: colorScheme.error,
                     ),
                     FinanceStatCard(
                       title: 'Movimentações',
                       value: '${dashboard.transactions.length}',
                       subtitle: 'Lançamentos no período',
                       icon: Icons.receipt_long_rounded,
-                      color: const Color(0xFF1F6FEB),
+                      color: colorScheme.secondary,
                     ),
                   ],
                 ),
@@ -255,7 +286,7 @@ class _HomePageState extends State<HomePage> {
                         transaction: transaction,
                         formatCurrency: _formatCurrency,
                         formatDate: _formatDate,
-                        color: _transactionColor(transaction.type),
+                        color: _transactionColor(context, transaction.type),
                         icon: _transactionIcon(transaction.type),
                         onDelete: () => _deleteTransaction(transaction.id),
                       ),
@@ -278,18 +309,23 @@ class _HeaderHero extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFF0F172A), Color(0xFF1F6FEB)],
+        gradient: LinearGradient(
+          colors: isDark
+              ? [const Color(0xFF1A1033), const Color(0xFF2E1A5C)]
+              : [const Color(0xFF4C1D95), const Color(0xFF7C3AED)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(28),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF1F6FEB).withValues(alpha: 0.22),
+            color: colorScheme.secondary.withValues(alpha: isDark ? 0.2 : 0.24),
             blurRadius: 30,
             offset: const Offset(0, 18),
           ),
@@ -377,9 +413,20 @@ class _TransactionTile extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).colorScheme.surface.withValues(
+          alpha: Theme.of(context).brightness == Brightness.dark ? 0.72 : 0.8,
+        ),
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: color.withValues(alpha: 0.14)),
+        border: Border.all(
+          color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.42),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: color.withValues(alpha: 0.12),
+            blurRadius: 24,
+            offset: const Offset(0, 10),
+          ),
+        ],
       ),
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -394,10 +441,17 @@ class _TransactionTile extends StatelessWidget {
         ),
         title: Text(
           transaction.title,
-          style: const TextStyle(fontWeight: FontWeight.w700),
+          style: Theme.of(
+            context,
+          ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
         ),
         subtitle: Text(
           '${transaction.category} · ${formatDate(transaction.occurredAt)}',
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+            color: Theme.of(
+              context,
+            ).colorScheme.onSurface.withValues(alpha: 0.7),
+          ),
         ),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
@@ -410,7 +464,12 @@ class _TransactionTile extends StatelessWidget {
             IconButton(
               tooltip: 'Excluir lançamento',
               onPressed: onDelete,
-              icon: const Icon(Icons.delete_outline_rounded),
+              icon: Icon(
+                Icons.delete_outline_rounded,
+                color: Theme.of(
+                  context,
+                ).colorScheme.onSurface.withValues(alpha: 0.7),
+              ),
             ),
           ],
         ),
@@ -426,17 +485,21 @@ class _EmptyStateCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: colorScheme.surface.withValues(
+          alpha: Theme.of(context).brightness == Brightness.dark ? 0.72 : 0.82,
+        ),
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Colors.black12),
+        border: Border.all(color: colorScheme.outline.withValues(alpha: 0.5)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.inbox_rounded, size: 36, color: Color(0xFF1F6FEB)),
+          Icon(Icons.inbox_rounded, size: 36, color: colorScheme.secondary),
           const SizedBox(height: 12),
           Text(
             'Nenhum lançamento encontrado.',

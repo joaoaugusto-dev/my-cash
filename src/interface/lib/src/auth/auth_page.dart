@@ -1,9 +1,10 @@
-import 'package:google_sign_in/google_sign_in.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../config/app_env.dart';
+import 'profile_helpers.dart';
 
 class AuthPage extends StatefulWidget {
   const AuthPage({super.key});
@@ -94,6 +95,8 @@ class _AuthPageState extends State<AuthPage> {
           idToken: idToken,
           accessToken: googleAuth.accessToken,
         );
+
+        await _syncGoogleAvatarIfNeeded(googleUser.photoUrl);
         return;
       }
 
@@ -120,6 +123,43 @@ class _AuthPageState extends State<AuthPage> {
             defaultTargetPlatform == TargetPlatform.iOS);
   }
 
+  Future<void> _syncGoogleAvatarIfNeeded(String? googlePhotoUrl) async {
+    final normalizedPhoto = normalizeGoogleAvatarUrl(googlePhotoUrl);
+    if (normalizedPhoto.isEmpty) {
+      return;
+    }
+
+    final auth = Supabase.instance.client.auth;
+    final user = auth.currentUser;
+    if (user == null) {
+      return;
+    }
+
+    final metadata = Map<String, dynamic>.from(user.userMetadata ?? const {});
+    final customAvatarPath = extractAvatarPath(metadata);
+    if (customAvatarPath != null) {
+      return;
+    }
+
+    final currentAvatarUrl = extractAvatarUrl(metadata) ?? '';
+    if (currentAvatarUrl == normalizedPhoto) {
+      return;
+    }
+
+    metadata['avatar_url'] = normalizedPhoto;
+    metadata['avatar_source'] = 'google';
+    metadata['avatar_updated_at'] = DateTime.now()
+        .toUtc()
+        .millisecondsSinceEpoch
+        .toString();
+
+    try {
+      await auth.updateUser(UserAttributes(data: metadata));
+    } catch (_) {
+      // Ignore sync failure here to keep login flow resilient.
+    }
+  }
+
   void _showMessage(String message) {
     if (!mounted) {
       return;
@@ -132,126 +172,145 @@ class _AuthPageState extends State<AuthPage> {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Scaffold(
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 440),
-              child: Card(
-                elevation: 0,
-                color: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(28),
-                  side: BorderSide(color: Colors.grey.shade200),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Form(
-                    key: _formKey,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: Theme.of(
-                              context,
-                            ).colorScheme.primaryContainer,
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'PJ-FINANC',
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .headlineMedium
-                                    ?.copyWith(fontWeight: FontWeight.w800),
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              Theme.of(context).scaffoldBackgroundColor,
+              colorScheme.primary.withValues(alpha: isDark ? 0.18 : 0.1),
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+        ),
+        child: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 440),
+                child: Card(
+                  elevation: 0,
+                  color: colorScheme.surface.withValues(
+                    alpha: isDark ? 0.74 : 0.86,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(28),
+                    side: BorderSide(
+                      color: colorScheme.outline.withValues(alpha: 0.55),
+                    ),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Form(
+                      key: _formKey,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: colorScheme.primary.withValues(
+                                alpha: isDark ? 0.24 : 0.12,
                               ),
-                              const SizedBox(height: 8),
-                              Text(
-                                'Entre com e-mail/senha ou Google para acessar o controle financeiro.',
-                                style: Theme.of(context).textTheme.bodyMedium,
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 24),
-                        TextFormField(
-                          controller: _emailController,
-                          keyboardType: TextInputType.emailAddress,
-                          decoration: const InputDecoration(
-                            labelText: 'E-mail',
-                            border: OutlineInputBorder(),
-                          ),
-                          validator: (value) {
-                            final email = value?.trim() ?? '';
-                            if (email.isEmpty) {
-                              return 'Informe seu e-mail';
-                            }
-                            if (!email.contains('@')) {
-                              return 'Informe um e-mail válido';
-                            }
-                            return null;
-                          },
-                        ),
-                        const SizedBox(height: 16),
-                        TextFormField(
-                          controller: _passwordController,
-                          obscureText: _obscurePassword,
-                          decoration: InputDecoration(
-                            labelText: 'Senha',
-                            border: const OutlineInputBorder(),
-                            suffixIcon: IconButton(
-                              onPressed: () {
-                                setState(() {
-                                  _obscurePassword = !_obscurePassword;
-                                });
-                              },
-                              icon: Icon(
-                                _obscurePassword
-                                    ? Icons.visibility_outlined
-                                    : Icons.visibility_off_outlined,
-                              ),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'MyCash',
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .headlineMedium
+                                      ?.copyWith(fontWeight: FontWeight.w800),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Entre com e-mail/senha ou Google para acessar o controle financeiro.',
+                                  style: Theme.of(context).textTheme.bodyMedium,
+                                ),
+                              ],
                             ),
                           ),
-                          validator: (value) {
-                            if ((value ?? '').trim().length < 6) {
-                              return 'A senha precisa ter pelo menos 6 caracteres';
-                            }
-                            return null;
-                          },
-                        ),
-                        const SizedBox(height: 24),
-                        FilledButton(
-                          onPressed: _isLoading ? null : _submitEmailAuth,
-                          child: Text(_isSignUp ? 'Criar conta' : 'Entrar'),
-                        ),
-                        const SizedBox(height: 12),
-                        OutlinedButton.icon(
-                          onPressed: _isLoading ? null : _signInWithGoogle,
-                          icon: const Icon(Icons.g_mobiledata_outlined),
-                          label: const Text('Continuar com Google'),
-                        ),
-                        const SizedBox(height: 12),
-                        TextButton(
-                          onPressed: _isLoading
-                              ? null
-                              : () {
+                          const SizedBox(height: 24),
+                          TextFormField(
+                            controller: _emailController,
+                            keyboardType: TextInputType.emailAddress,
+                            decoration: const InputDecoration(
+                              labelText: 'E-mail',
+                              border: OutlineInputBorder(),
+                            ),
+                            validator: (value) {
+                              final email = value?.trim() ?? '';
+                              if (email.isEmpty) {
+                                return 'Informe seu e-mail';
+                              }
+                              if (!email.contains('@')) {
+                                return 'Informe um e-mail válido';
+                              }
+                              return null;
+                            },
+                          ),
+                          const SizedBox(height: 16),
+                          TextFormField(
+                            controller: _passwordController,
+                            obscureText: _obscurePassword,
+                            decoration: InputDecoration(
+                              labelText: 'Senha',
+                              border: const OutlineInputBorder(),
+                              suffixIcon: IconButton(
+                                onPressed: () {
                                   setState(() {
-                                    _isSignUp = !_isSignUp;
+                                    _obscurePassword = !_obscurePassword;
                                   });
                                 },
-                          child: Text(
-                            _isSignUp
-                                ? 'Já tenho conta. Fazer login'
-                                : 'Ainda não tenho conta. Criar cadastro',
+                                icon: Icon(
+                                  _obscurePassword
+                                      ? Icons.visibility_outlined
+                                      : Icons.visibility_off_outlined,
+                                ),
+                              ),
+                            ),
+                            validator: (value) {
+                              if ((value ?? '').trim().length < 6) {
+                                return 'A senha precisa ter pelo menos 6 caracteres';
+                              }
+                              return null;
+                            },
                           ),
-                        ),
-                      ],
+                          const SizedBox(height: 24),
+                          FilledButton(
+                            onPressed: _isLoading ? null : _submitEmailAuth,
+                            child: Text(_isSignUp ? 'Criar conta' : 'Entrar'),
+                          ),
+                          const SizedBox(height: 12),
+                          OutlinedButton.icon(
+                            onPressed: _isLoading ? null : _signInWithGoogle,
+                            icon: const Icon(Icons.g_mobiledata_outlined),
+                            label: const Text('Continuar com Google'),
+                          ),
+                          const SizedBox(height: 12),
+                          TextButton(
+                            onPressed: _isLoading
+                                ? null
+                                : () {
+                                    setState(() {
+                                      _isSignUp = !_isSignUp;
+                                    });
+                                  },
+                            child: Text(
+                              _isSignUp
+                                  ? 'Já tenho conta. Fazer login'
+                                  : 'Ainda não tenho conta. Criar cadastro',
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),

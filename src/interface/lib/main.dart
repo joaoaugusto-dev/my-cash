@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'src/app.dart';
 import 'src/config/app_env.dart';
+import 'src/theme/app_theme_controller.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -14,14 +15,17 @@ Future<void> main() async {
     anonKey: AppEnv.supabaseAnonKey,
   );
 
-  runApp(const MyApp());
+  final themeController = await AppThemeController.create();
+  runApp(MyApp(themeController: themeController));
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  const MyApp({super.key, required this.themeController});
+
+  final AppThemeController themeController;
 
   @override
   Widget build(BuildContext context) {
-    return const App();
+    return App(themeController: themeController);
   }
 }

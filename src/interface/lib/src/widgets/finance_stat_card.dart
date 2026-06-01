@@ -18,12 +18,15 @@ class FinanceStatCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: colorScheme.surface.withValues(alpha: isDark ? 0.72 : 0.82),
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: color.withValues(alpha: 0.18)),
+        border: Border.all(color: colorScheme.outline.withValues(alpha: 0.45)),
         boxShadow: [
           BoxShadow(
             color: color.withValues(alpha: 0.08),
@@ -48,7 +51,7 @@ class FinanceStatCard extends StatelessWidget {
           Text(
             title,
             style: Theme.of(context).textTheme.labelLarge?.copyWith(
-              color: Colors.black54,
+              color: colorScheme.onSurface.withValues(alpha: 0.72),
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -63,9 +66,9 @@ class FinanceStatCard extends StatelessWidget {
             const SizedBox(height: 4),
             Text(
               subtitle!,
-              style: Theme.of(
-                context,
-              ).textTheme.bodySmall?.copyWith(color: Colors.black54),
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: colorScheme.onSurface.withValues(alpha: 0.72),
+              ),
             ),
           ],
         ],

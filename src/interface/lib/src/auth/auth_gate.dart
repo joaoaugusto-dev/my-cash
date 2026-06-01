@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../theme/app_theme_controller.dart';
 import 'auth_page.dart';
 import 'home_page.dart';
 
 class AuthGate extends StatelessWidget {
-  const AuthGate({super.key});
+  const AuthGate({super.key, required this.themeController});
+
+  final AppThemeController themeController;
 
   @override
   Widget build(BuildContext context) {
@@ -21,7 +24,7 @@ class AuthGate extends StatelessWidget {
           return const AuthPage();
         }
 
-        return HomePage(session: session);
+        return HomePage(session: session, themeController: themeController);
       },
     );
   }
