@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../theme/app_theme_controller.dart';
@@ -38,10 +39,12 @@ class _SettingsPageState extends State<SettingsPage> {
   String? _avatarVersion;
   String _resolvedAvatarUrl = '';
   String _avatarStateKey = '';
+  late final Future<SharedPreferences> _preferencesFuture;
 
   @override
   void initState() {
     super.initState();
+    _preferencesFuture = SharedPreferences.getInstance();
     _syncUserData();
     _refreshResolvedAvatarUrl();
   }
@@ -121,6 +124,9 @@ class _SettingsPageState extends State<SettingsPage> {
 
       await auth.updateUser(UserAttributes(data: currentMetadata));
 
+      final prefs = await _preferencesFuture;
+      await clearCachedAvatarUrl(prefs: prefs, userId: user.id);
+
       if (mounted) {
         setState(() {
           _avatarPath = filePath;
@@ -178,6 +184,9 @@ class _SettingsPageState extends State<SettingsPage> {
       currentMetadata.remove('avatar_updated_at');
 
       await auth.updateUser(UserAttributes(data: currentMetadata));
+
+      final prefs = await _preferencesFuture;
+      await clearCachedAvatarUrl(prefs: prefs, userId: user.id);
 
       if (mounted) {
         setState(() {
@@ -337,8 +346,15 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _refreshResolvedAvatarUrl() async {
-    final nextStateKey =
-        '${_avatarPath ?? ''}|${_avatarUrl ?? ''}|${_avatarVersion ?? ''}';
+    final authUser =
+        Supabase.instance.client.auth.currentUser ?? widget.session.user;
+    final cacheIdentity = buildAvatarCacheIdentity(
+      userId: authUser.id,
+      avatarPath: _avatarPath,
+      avatarUrl: _avatarUrl,
+      avatarVersion: _avatarVersion,
+    );
+    final nextStateKey = cacheIdentity;
     if (nextStateKey == _avatarStateKey) {
       return;
     }
@@ -351,13 +367,35 @@ class _SettingsPageState extends State<SettingsPage> {
     String resolvedUrl = '';
 
     try {
-      if ((_avatarPath ?? '').isNotEmpty) {
+      final prefs = await _preferencesFuture;
+      final cachedUrl = await readCachedAvatarUrl(
+        prefs: prefs,
+        userId: authUser.id,
+        identity: cacheIdentity,
+      );
+      if (cachedUrl != null) {
+        resolvedUrl = cachedUrl;
+      } else if ((_avatarPath ?? '').isNotEmpty) {
         final signedUrl = await Supabase.instance.client.storage
             .from(_avatarBucket)
             .createSignedUrl(_avatarPath!, 60 * 60 * 24);
         resolvedUrl = buildAvatarCacheAwareUrl(signedUrl, _avatarVersion);
+        await writeCachedAvatarUrl(
+          prefs: prefs,
+          userId: authUser.id,
+          identity: cacheIdentity,
+          avatarUrl: resolvedUrl,
+          expiresAt: DateTime.now().toUtc().add(avatarSignedUrlCacheDuration),
+        );
       } else {
         resolvedUrl = buildAvatarCacheAwareUrl(_avatarUrl, _avatarVersion);
+        await writeCachedAvatarUrl(
+          prefs: prefs,
+          userId: authUser.id,
+          identity: cacheIdentity,
+          avatarUrl: resolvedUrl,
+          expiresAt: DateTime.now().toUtc().add(avatarSignedUrlCacheDuration),
+        );
       }
     } catch (_) {
       resolvedUrl = buildAvatarCacheAwareUrl(_avatarUrl, _avatarVersion);

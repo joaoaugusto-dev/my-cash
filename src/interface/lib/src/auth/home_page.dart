@@ -159,7 +159,7 @@ class _HomePageState extends State<HomePage> {
             icon: const Icon(Icons.tune_rounded),
           ),
           TextButton.icon(
-            style: TextButton.styleFrom(foregroundColor: colorScheme.onPrimary),
+            style: TextButton.styleFrom(foregroundColor: colorScheme.onSurface),
             onPressed: () async {
               await Supabase.instance.client.auth.signOut();
             },
