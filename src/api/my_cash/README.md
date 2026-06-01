@@ -27,22 +27,27 @@
 
 ## Supabase JWT Setup
 
-Create a local `.env` file in this folder with:
+Create a local `.env` file in this folder based on [.env.example](.env.example):
 
 ```env
 PORT=3000
 SUPABASE_URL=
 SUPABASE_SERVICE_ROLE_KEY=
-CORS_ORIGIN=*
+SUPABASE_JWT_SECRET=
+CORS_ORIGIN=http://localhost:4200,http://localhost:3000
 ```
 
-Use the project URL in `SUPABASE_URL` and the project service role key in `SUPABASE_SERVICE_ROLE_KEY`. The backend no longer falls back to in-memory storage for transactions.
+Use the project URL in `SUPABASE_URL`, the project service role key in `SUPABASE_SERVICE_ROLE_KEY`, and the Supabase JWT secret in `SUPABASE_JWT_SECRET`. Never commit the `.env` file.
+
+The backend rejects unknown CORS origins by default and only allows a local development allowlist unless `CORS_ORIGIN` is set explicitly.
 
 Protected routes validate access tokens against Supabase JWKS at `GET /auth/v1/.well-known/jwks.json`.
 
 The backend validates the Supabase access token on `GET /auth/me` and resolves every financial record by authenticated user.
 
 The transactions domain uses a `transactions` table in Supabase with a `user_id` column so each user only sees their own entries and exits.
+
+Row-level security is enabled in [supabase/schema.sql](supabase/schema.sql). Keep it enabled in production.
 
 To make the app functional, apply the SQL schema in [supabase/schema.sql](supabase/schema.sql) in the Supabase SQL Editor before starting the backend or Flutter app.
 

@@ -4,12 +4,12 @@ A new Flutter project.
 
 ## Authentication Setup
 
-Create a local `.env` file in this folder with:
+Create a local `.env` file in this folder based on [.env.example](.env.example):
 
 ```env
 SUPABASE_URL=
 SUPABASE_ANON_KEY=
-API_BASE_URL=http://localhost:3000
+API_BASE_URL=http://localhost:3000/api
 OAUTH_REDIRECT_SCHEME=mycash
 OAUTH_REDIRECT_HOST=auth-callback
 GOOGLE_WEB_CLIENT_ID=

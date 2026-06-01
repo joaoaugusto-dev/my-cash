@@ -18,10 +18,19 @@ describe('getCorsOptions', () => {
     process.env.CORS_ORIGIN = originalCorsOrigin;
   });
 
-  it('allows every origin when no env var is set', () => {
+  it('uses local development origins when no env var is set', () => {
     expect(getCorsOptions()).toEqual({
-      origin: true,
+      origin: [
+        'http://localhost:3000',
+        'http://localhost:4200',
+        'http://127.0.0.1:3000',
+        'http://127.0.0.1:4200',
+        'http://10.0.2.2:3000',
+      ],
       methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
+      allowedHeaders: ['Authorization', 'Content-Type', 'Accept', 'Origin'],
+      credentials: false,
+      maxAge: 86400,
     });
   });
 
@@ -31,21 +40,37 @@ describe('getCorsOptions', () => {
     expect(getCorsOptions()).toEqual({
       origin: ['https://app.example.com', 'http://localhost:4200'],
       methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
+      allowedHeaders: ['Authorization', 'Content-Type', 'Accept', 'Origin'],
+      credentials: false,
+      maxAge: 86400,
     });
   });
 
   it('configures the api prefix and cors on the app', () => {
     const app = {
+      disable: jest.fn(),
       setGlobalPrefix: jest.fn(),
       enableCors: jest.fn(),
+      use: jest.fn(),
     } as any;
 
     configureApp(app);
 
+    expect(app.disable).toHaveBeenCalledWith('x-powered-by');
     expect(app.setGlobalPrefix).toHaveBeenCalledWith('api');
+    expect(app.use).toHaveBeenCalledTimes(1);
     expect(app.enableCors).toHaveBeenCalledWith({
-      origin: true,
+      origin: [
+        'http://localhost:3000',
+        'http://localhost:4200',
+        'http://127.0.0.1:3000',
+        'http://127.0.0.1:4200',
+        'http://10.0.2.2:3000',
+      ],
       methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
+      allowedHeaders: ['Authorization', 'Content-Type', 'Accept', 'Origin'],
+      credentials: false,
+      maxAge: 86400,
     });
   });
 });
