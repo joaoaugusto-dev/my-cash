@@ -8,12 +8,34 @@ export interface TransactionFilters {
   month?: string;
 }
 
+export interface RepositoryAuthContext {
+  accessToken: string;
+}
+
 export interface TransactionsRepository {
-  findAll(userId: string, filters?: TransactionFilters): Promise<Transaction[]>;
-  findOne(userId: string, id: string): Promise<Transaction>;
-  create(transaction: Transaction): Promise<Transaction>;
-  update(transaction: Transaction): Promise<Transaction>;
-  remove(userId: string, id: string): Promise<void>;
+  findAll(
+    authContext: RepositoryAuthContext,
+    userId: string,
+    filters?: TransactionFilters,
+  ): Promise<Transaction[]>;
+  findOne(
+    authContext: RepositoryAuthContext,
+    userId: string,
+    id: string,
+  ): Promise<Transaction>;
+  create(
+    authContext: RepositoryAuthContext,
+    transaction: Transaction,
+  ): Promise<Transaction>;
+  update(
+    authContext: RepositoryAuthContext,
+    transaction: Transaction,
+  ): Promise<Transaction>;
+  remove(
+    authContext: RepositoryAuthContext,
+    userId: string,
+    id: string,
+  ): Promise<void>;
 }
 
 export const TRANSACTIONS_REPOSITORY = 'TRANSACTIONS_REPOSITORY';

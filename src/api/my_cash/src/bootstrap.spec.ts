@@ -47,8 +47,11 @@ describe('getCorsOptions', () => {
   });
 
   it('configures the api prefix and cors on the app', () => {
+    const disable = jest.fn();
     const app = {
-      disable: jest.fn(),
+      getHttpAdapter: () => ({
+        getInstance: () => ({ disable }),
+      }),
       setGlobalPrefix: jest.fn(),
       enableCors: jest.fn(),
       use: jest.fn(),
@@ -56,7 +59,7 @@ describe('getCorsOptions', () => {
 
     configureApp(app);
 
-    expect(app.disable).toHaveBeenCalledWith('x-powered-by');
+    expect(disable).toHaveBeenCalledWith('x-powered-by');
     expect(app.setGlobalPrefix).toHaveBeenCalledWith('api');
     expect(app.use).toHaveBeenCalledTimes(1);
     expect(app.enableCors).toHaveBeenCalledWith({

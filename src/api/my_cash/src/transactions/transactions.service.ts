@@ -1,11 +1,20 @@
-import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { CreateTransactionDto } from './dto/create-transaction.dto';
 import { UpdateTransactionDto } from './dto/update-transaction.dto';
 import { TransactionType } from './transaction-type.enum';
-import { Transaction, TransactionSummary } from './interfaces/transaction.interface';
+import {
+  Transaction,
+  TransactionSummary,
+} from './interfaces/transaction.interface';
 import {
   TRANSACTIONS_REPOSITORY,
+  type RepositoryAuthContext,
   type TransactionsRepository,
 } from './transactions.repository';
 
@@ -17,15 +26,28 @@ export class TransactionsService {
   ) {}
 
   async findAll(
+    authContext: RepositoryAuthContext,
     userId: string,
     type?: TransactionType,
     month?: string,
   ): Promise<Transaction[]> {
-    return this.transactionsRepository.findAll(userId, { type, month });
+    return this.transactionsRepository.findAll(authContext, userId, {
+      type,
+      month,
+    });
   }
 
-  async getSummary(userId: string, month?: string): Promise<TransactionSummary> {
-    const scopedTransactions = await this.findAll(userId, undefined, month);
+  async getSummary(
+    authContext: RepositoryAuthContext,
+    userId: string,
+    month?: string,
+  ): Promise<TransactionSummary> {
+    const scopedTransactions = await this.findAll(
+      authContext,
+      userId,
+      undefined,
+      month,
+    );
 
     const income = scopedTransactions
       .filter((transaction) => transaction.type === TransactionType.INCOME)
@@ -49,11 +71,19 @@ export class TransactionsService {
     };
   }
 
-  async findOne(userId: string, id: string): Promise<Transaction> {
-    return this.transactionsRepository.findOne(userId, id);
+  async findOne(
+    authContext: RepositoryAuthContext,
+    userId: string,
+    id: string,
+  ): Promise<Transaction> {
+    return this.transactionsRepository.findOne(authContext, userId, id);
   }
 
-  async create(userId: string, dto: CreateTransactionDto): Promise<Transaction> {
+  async create(
+    authContext: RepositoryAuthContext,
+    userId: string,
+    dto: CreateTransactionDto,
+  ): Promise<Transaction> {
     this.assertValidPayload(dto);
 
     const now = new Date().toISOString();
@@ -71,11 +101,16 @@ export class TransactionsService {
       updatedAt: now,
     };
 
-    return this.transactionsRepository.create(transaction);
+    return this.transactionsRepository.create(authContext, transaction);
   }
 
-  async update(userId: string, id: string, dto: UpdateTransactionDto): Promise<Transaction> {
-    const transaction = await this.findOne(userId, id);
+  async update(
+    authContext: RepositoryAuthContext,
+    userId: string,
+    id: string,
+    dto: UpdateTransactionDto,
+  ): Promise<Transaction> {
+    const transaction = await this.findOne(authContext, userId, id);
     const nextTransaction = { ...transaction };
 
     if (dto.title !== undefined) {
@@ -112,11 +147,15 @@ export class TransactionsService {
 
     nextTransaction.updatedAt = new Date().toISOString();
 
-    return this.transactionsRepository.update(nextTransaction);
+    return this.transactionsRepository.update(authContext, nextTransaction);
   }
 
-  async remove(userId: string, id: string): Promise<void> {
-    await this.transactionsRepository.remove(userId, id);
+  async remove(
+    authContext: RepositoryAuthContext,
+    userId: string,
+    id: string,
+  ): Promise<void> {
+    await this.transactionsRepository.remove(authContext, userId, id);
   }
 
   private assertValidPayload(dto: CreateTransactionDto): void {

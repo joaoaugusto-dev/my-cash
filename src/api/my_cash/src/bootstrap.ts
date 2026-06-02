@@ -10,7 +10,10 @@ const defaultCorsOrigins = [
 ];
 
 export function configureApp(app: INestApplication) {
-  app.disable('x-powered-by');
+  const httpServer = app.getHttpAdapter().getInstance() as {
+    disable?: (setting: string) => void;
+  };
+  httpServer.disable?.('x-powered-by');
   app.setGlobalPrefix('api');
   applySecurityHeaders(app);
   configureCors(app);

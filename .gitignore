@@ -11,6 +11,7 @@
 **/.env.development.local
 **/.env.test.local
 **/.env.production.local
+src/interface/.prod.env
 
 # Editor and OS files
 **/.DS_Store

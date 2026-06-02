@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
@@ -7,12 +8,12 @@ import 'financial_transaction.dart';
 class TransactionsApiService {
   TransactionsApiService({
     required this.apiBaseUrl,
-    required this.accessToken,
+    required this.accessTokenProvider,
     http.Client? client,
   }) : _client = client ?? http.Client();
 
   final String apiBaseUrl;
-  final String accessToken;
+  final FutureOr<String> Function() accessTokenProvider;
   final http.Client _client;
 
   Future<FinancialDashboard> fetchDashboard({String? month}) async {
@@ -33,7 +34,7 @@ class TransactionsApiService {
   ) async {
     final response = await _client.post(
       _uri('/transactions'),
-      headers: _headers,
+      headers: await _headers(),
       body: jsonEncode(transaction.toCreateJson()),
     );
 
@@ -46,24 +47,31 @@ class TransactionsApiService {
   Future<void> deleteTransaction(String id) async {
     final response = await _client.delete(
       _uri('/transactions/$id'),
-      headers: _headers,
+      headers: await _headers(),
     );
 
     _ensureSuccess(response);
   }
 
   Future<dynamic> _getJson(String path) async {
-    final response = await _client.get(_uri(path), headers: _headers);
+    final response = await _client.get(_uri(path), headers: await _headers());
     _ensureSuccess(response);
     return jsonDecode(response.body);
   }
 
   Uri _uri(String path) => Uri.parse('$apiBaseUrl$path');
 
-  Map<String, String> get _headers => {
-    'Authorization': 'Bearer $accessToken',
-    'Content-Type': 'application/json',
-  };
+  Future<Map<String, String>> _headers() async {
+    final accessToken = (await accessTokenProvider()).trim();
+    if (accessToken.isEmpty) {
+      throw StateError('Sessão expirada. Faça login novamente.');
+    }
+
+    return {
+      'Authorization': 'Bearer $accessToken',
+      'Content-Type': 'application/json',
+    };
+  }
 
   void _ensureSuccess(http.Response response) {
     if (response.statusCode >= 200 && response.statusCode < 300) {

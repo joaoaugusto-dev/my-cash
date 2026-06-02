@@ -1,9 +1,22 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
-import { Request } from 'express';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import type { CreateTransactionDto } from './dto/create-transaction.dto';
 import type { UpdateTransactionDto } from './dto/update-transaction.dto';
 import { TransactionType } from './transaction-type.enum';
-import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import {
+  JwtAuthGuard,
+  type AuthenticatedRequest,
+} from '../auth/jwt-auth.guard';
 import { TransactionsService } from './transactions.service';
 
 @UseGuards(JwtAuthGuard)
@@ -13,47 +26,77 @@ export class TransactionsController {
 
   @Get()
   findAll(
-    @Req() request: Request & { user: { userId: string } },
+    @Req() request: AuthenticatedRequest,
     @Query('type') type?: TransactionType,
     @Query('month') month?: string,
   ) {
-    return this.transactionsService.findAll(request.user.userId, type, month);
+    return this.transactionsService.findAll(
+      this.authContext(request),
+      request.user.userId,
+      type,
+      month,
+    );
   }
 
   @Get('summary')
   getSummary(
-    @Req() request: Request & { user: { userId: string } },
+    @Req() request: AuthenticatedRequest,
     @Query('month') month?: string,
   ) {
-    return this.transactionsService.getSummary(request.user.userId, month);
+    return this.transactionsService.getSummary(
+      this.authContext(request),
+      request.user.userId,
+      month,
+    );
   }
 
   @Get(':id')
-  findOne(@Req() request: Request & { user: { userId: string } }, @Param('id') id: string) {
-    return this.transactionsService.findOne(request.user.userId, id);
+  findOne(@Req() request: AuthenticatedRequest, @Param('id') id: string) {
+    return this.transactionsService.findOne(
+      this.authContext(request),
+      request.user.userId,
+      id,
+    );
   }
 
   @Post()
-  create(@Req() request: Request & { user: { userId: string } }, @Body() dto: CreateTransactionDto) {
-    return this.transactionsService.create(request.user.userId, dto);
+  create(
+    @Req() request: AuthenticatedRequest,
+    @Body() dto: CreateTransactionDto,
+  ) {
+    return this.transactionsService.create(
+      this.authContext(request),
+      request.user.userId,
+      dto,
+    );
   }
 
   @Patch(':id')
   update(
-    @Req() request: Request & { user: { userId: string } },
+    @Req() request: AuthenticatedRequest,
     @Param('id') id: string,
     @Body() dto: UpdateTransactionDto,
   ) {
-    return this.transactionsService.update(request.user.userId, id, dto);
+    return this.transactionsService.update(
+      this.authContext(request),
+      request.user.userId,
+      id,
+      dto,
+    );
   }
 
   @Delete(':id')
-  async remove(
-    @Req() request: Request & { user: { userId: string } },
-    @Param('id') id: string,
-  ) {
-    await this.transactionsService.remove(request.user.userId, id);
+  async remove(@Req() request: AuthenticatedRequest, @Param('id') id: string) {
+    await this.transactionsService.remove(
+      this.authContext(request),
+      request.user.userId,
+      id,
+    );
 
     return { deleted: true, id };
+  }
+
+  private authContext(request: AuthenticatedRequest) {
+    return { accessToken: request.user.accessToken };
   }
 }

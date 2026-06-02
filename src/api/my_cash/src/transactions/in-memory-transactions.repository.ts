@@ -1,15 +1,25 @@
 import { NotFoundException } from '@nestjs/common';
 import { Transaction } from './interfaces/transaction.interface';
-import { TransactionFilters, TransactionsRepository } from './transactions.repository';
+import {
+  type RepositoryAuthContext,
+  type TransactionFilters,
+  type TransactionsRepository,
+} from './transactions.repository';
 
 export class InMemoryTransactionsRepository implements TransactionsRepository {
   private readonly transactionsByUserId = new Map<string, Transaction[]>();
 
-  async findAll(userId: string, filters?: TransactionFilters): Promise<Transaction[]> {
+  async findAll(
+    _authContext: RepositoryAuthContext,
+    userId: string,
+    filters?: TransactionFilters,
+  ): Promise<Transaction[]> {
     const transactions = this.transactionsByUserId.get(userId) ?? [];
 
     return transactions.filter((transaction) => {
-      const matchesType = filters?.type ? transaction.type === filters.type : true;
+      const matchesType = filters?.type
+        ? transaction.type === filters.type
+        : true;
       const matchesMonth = filters?.month
         ? transaction.occurredAt.startsWith(filters.month)
         : true;
@@ -18,7 +28,11 @@ export class InMemoryTransactionsRepository implements TransactionsRepository {
     });
   }
 
-  async findOne(userId: string, id: string): Promise<Transaction> {
+  async findOne(
+    _authContext: RepositoryAuthContext,
+    userId: string,
+    id: string,
+  ): Promise<Transaction> {
     const transaction = (this.transactionsByUserId.get(userId) ?? []).find(
       (item) => item.id === id,
     );
@@ -30,15 +44,26 @@ export class InMemoryTransactionsRepository implements TransactionsRepository {
     return transaction;
   }
 
-  async create(transaction: Transaction): Promise<Transaction> {
-    const transactions = this.transactionsByUserId.get(transaction.userId) ?? [];
-    this.transactionsByUserId.set(transaction.userId, [transaction, ...transactions]);
+  async create(
+    _authContext: RepositoryAuthContext,
+    transaction: Transaction,
+  ): Promise<Transaction> {
+    const transactions =
+      this.transactionsByUserId.get(transaction.userId) ?? [];
+    this.transactionsByUserId.set(transaction.userId, [
+      transaction,
+      ...transactions,
+    ]);
 
     return transaction;
   }
 
-  async update(transaction: Transaction): Promise<Transaction> {
-    const transactions = this.transactionsByUserId.get(transaction.userId) ?? [];
+  async update(
+    _authContext: RepositoryAuthContext,
+    transaction: Transaction,
+  ): Promise<Transaction> {
+    const transactions =
+      this.transactionsByUserId.get(transaction.userId) ?? [];
     const index = transactions.findIndex((item) => item.id === transaction.id);
 
     if (index === -1) {
@@ -51,9 +76,15 @@ export class InMemoryTransactionsRepository implements TransactionsRepository {
     return transaction;
   }
 
-  async remove(userId: string, id: string): Promise<void> {
+  async remove(
+    _authContext: RepositoryAuthContext,
+    userId: string,
+    id: string,
+  ): Promise<void> {
     const transactions = this.transactionsByUserId.get(userId) ?? [];
-    const nextTransactions = transactions.filter((transaction) => transaction.id !== id);
+    const nextTransactions = transactions.filter(
+      (transaction) => transaction.id !== id,
+    );
 
     if (nextTransactions.length === transactions.length) {
       throw new NotFoundException(`Transaction ${id} not found`);

@@ -4,32 +4,39 @@ A new Flutter project.
 
 ## Authentication Setup
 
-Create a local `.env` file in this folder based on [.env.example](.env.example):
+Create a local `.env` file in this folder based on [.env.example](.env.example), then pass it with `--dart-define-from-file=.env`:
 
 ```env
+APP_ENV=development
 SUPABASE_URL=
 SUPABASE_ANON_KEY=
 API_BASE_URL=http://localhost:3000/api
-OAUTH_REDIRECT_SCHEME=mycash
-OAUTH_REDIRECT_HOST=auth-callback
 GOOGLE_WEB_CLIENT_ID=
 ```
 
-Use `mycash://auth-callback` as the redirect URL in Supabase and configure the Google Web Client ID in the same `.env` file. On Android, the native Google login uses that Web Client ID as `serverClientId`.
+Hybrid auth setup:
+- Web uses Supabase OAuth redirect on the same HTTP origin.
+- Android uses native Google Sign-In and exchanges the `idToken` with Supabase.
+- Keep the Google Web Client ID configured; Android uses it as `serverClientId`.
+- In Supabase URL Configuration, keep `Site URL` as your web domain (never `mycash://...`).
+- Keep only public client config here. Never put service role keys, JWT secrets, or provider secrets in Flutter env files.
 
-For production builds, point `API_BASE_URL` to the deployed API, for example:
+Local development should point to the Supabase dev cloud project and the local API. Use `http://localhost:3000/api` for web and `http://10.0.2.2:3000/api` for the Android emulator.
+
+For production builds, set `APP_ENV=production` and point `API_BASE_URL` to the deployed API. Production validation rejects local hosts and non-HTTPS API URLs:
 
 ```env
-API_BASE_URL=https://<your-vercel-deployment>.vercel.app/api
+APP_ENV=production
+API_BASE_URL=https://<api-production-domain>/api
 ```
 
-Run the backend deployment from `src/api/my_cash` with `vercel --prod`, then update the app `.env` before building the release artifact.
+Run the backend deployment from `src/api/my_cash` with `vercel --prod`, then build the web app with production `--dart-define` values instead of committing production `.env` files.
 
 Run the app with:
 
 ```bash
 flutter pub get
-flutter run
+flutter run --dart-define-from-file=.env
 ```
 
 ## Getting Started

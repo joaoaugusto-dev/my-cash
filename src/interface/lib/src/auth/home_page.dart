@@ -40,7 +40,7 @@ class _HomePageState extends State<HomePage> {
     _preferencesFuture = SharedPreferences.getInstance();
     _apiService = TransactionsApiService(
       apiBaseUrl: AppEnv.apiBaseUrl,
-      accessToken: widget.session.accessToken,
+      accessTokenProvider: _currentAccessToken,
     );
     _dashboardFuture = _loadDashboard();
     _refreshResolvedAvatarUrl();
@@ -48,6 +48,15 @@ class _HomePageState extends State<HomePage> {
 
   Future<FinancialDashboard> _loadDashboard() {
     return _apiService.fetchDashboard();
+  }
+
+  String _currentAccessToken() {
+    final session = Supabase.instance.client.auth.currentSession;
+    if (session == null) {
+      throw StateError('Sessão expirada. Faça login novamente.');
+    }
+
+    return session.accessToken;
   }
 
   void _refreshDashboard() {

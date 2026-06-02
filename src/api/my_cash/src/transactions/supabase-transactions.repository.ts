@@ -1,7 +1,11 @@
 import { NotFoundException } from '@nestjs/common';
-import { SupabaseClient } from '@supabase/supabase-js';
+import { createClient } from '@supabase/supabase-js';
 import { Transaction } from './interfaces/transaction.interface';
-import { TransactionFilters, TransactionsRepository } from './transactions.repository';
+import {
+  type RepositoryAuthContext,
+  type TransactionFilters,
+  type TransactionsRepository,
+} from './transactions.repository';
 
 interface TransactionRow {
   id: string;
@@ -18,10 +22,17 @@ interface TransactionRow {
 }
 
 export class SupabaseTransactionsRepository implements TransactionsRepository {
-  constructor(private readonly supabase: SupabaseClient) {}
+  constructor(
+    private readonly supabaseUrl: string,
+    private readonly supabaseAnonKey: string,
+  ) {}
 
-  async findAll(userId: string, filters?: TransactionFilters): Promise<Transaction[]> {
-    let query = this.supabase
+  async findAll(
+    authContext: RepositoryAuthContext,
+    userId: string,
+    filters?: TransactionFilters,
+  ): Promise<Transaction[]> {
+    let query = this.client(authContext)
       .from('transactions')
       .select('*')
       .eq('user_id', userId)
@@ -44,8 +55,12 @@ export class SupabaseTransactionsRepository implements TransactionsRepository {
     return (data ?? []).map((row) => this.fromRow(row as TransactionRow));
   }
 
-  async findOne(userId: string, id: string): Promise<Transaction> {
-    const { data, error } = await this.supabase
+  async findOne(
+    authContext: RepositoryAuthContext,
+    userId: string,
+    id: string,
+  ): Promise<Transaction> {
+    const { data, error } = await this.client(authContext)
       .from('transactions')
       .select('*')
       .eq('user_id', userId)
@@ -63,8 +78,11 @@ export class SupabaseTransactionsRepository implements TransactionsRepository {
     return this.fromRow(data as TransactionRow);
   }
 
-  async create(transaction: Transaction): Promise<Transaction> {
-    const { data, error } = await this.supabase
+  async create(
+    authContext: RepositoryAuthContext,
+    transaction: Transaction,
+  ): Promise<Transaction> {
+    const { data, error } = await this.client(authContext)
       .from('transactions')
       .insert(this.toRow(transaction))
       .select('*')
@@ -77,8 +95,11 @@ export class SupabaseTransactionsRepository implements TransactionsRepository {
     return this.fromRow(data as TransactionRow);
   }
 
-  async update(transaction: Transaction): Promise<Transaction> {
-    const { data, error } = await this.supabase
+  async update(
+    authContext: RepositoryAuthContext,
+    transaction: Transaction,
+  ): Promise<Transaction> {
+    const { data, error } = await this.client(authContext)
       .from('transactions')
       .update(this.toRow(transaction))
       .eq('user_id', transaction.userId)
@@ -97,8 +118,12 @@ export class SupabaseTransactionsRepository implements TransactionsRepository {
     return this.fromRow(data as TransactionRow);
   }
 
-  async remove(userId: string, id: string): Promise<void> {
-    const { data, error } = await this.supabase
+  async remove(
+    authContext: RepositoryAuthContext,
+    userId: string,
+    id: string,
+  ): Promise<void> {
+    const { data, error } = await this.client(authContext)
       .from('transactions')
       .delete()
       .eq('user_id', userId)
@@ -113,6 +138,20 @@ export class SupabaseTransactionsRepository implements TransactionsRepository {
     if (!data) {
       throw new NotFoundException(`Transaction ${id} not found`);
     }
+  }
+
+  private client(authContext: RepositoryAuthContext) {
+    return createClient(this.supabaseUrl, this.supabaseAnonKey, {
+      global: {
+        headers: {
+          Authorization: `Bearer ${authContext.accessToken}`,
+        },
+      },
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+      },
+    });
   }
 
   private toRow(transaction: Transaction) {
@@ -147,7 +186,10 @@ export class SupabaseTransactionsRepository implements TransactionsRepository {
     };
   }
 
-  private getMonthWindow(month: string): { startDate: string; endDate: string } {
+  private getMonthWindow(month: string): {
+    startDate: string;
+    endDate: string;
+  } {
     const startDate = `${month}-01T00:00:00.000Z`;
     const endDate = new Date(startDate);
     endDate.setUTCMonth(endDate.getUTCMonth() + 1);

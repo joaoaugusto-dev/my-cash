@@ -16,7 +16,8 @@ describe('TransactionsController', () => {
       providers: [
         {
           provide: TransactionsService,
-          useFactory: () => new TransactionsService(new InMemoryTransactionsRepository()),
+          useFactory: () =>
+            new TransactionsService(new InMemoryTransactionsRepository()),
         },
         {
           provide: JwtAuthGuard,
@@ -38,7 +39,9 @@ describe('TransactionsController', () => {
   });
 
   it('should create and fetch transactions through the controller', async () => {
-    const request = { user: { userId: 'user-1' } } as never;
+    const request = {
+      user: { userId: 'user-1', accessToken: 'test-token' },
+    } as never;
 
     const created = await controller.create(request, {
       title: 'Freelance',
@@ -50,7 +53,9 @@ describe('TransactionsController', () => {
 
     expect(created.title).toBe('Freelance');
     await expect(controller.findAll(request)).resolves.toHaveLength(1);
-    await expect(controller.getSummary(request, '2026-05')).resolves.toMatchObject({
+    await expect(
+      controller.getSummary(request, '2026-05'),
+    ).resolves.toMatchObject({
       income: 1200,
       expense: 0,
       balance: 1200,
@@ -58,15 +63,21 @@ describe('TransactionsController', () => {
   });
 
   it('should update and delete transactions through the controller', async () => {
-    const request = { user: { userId: 'user-1' } } as never;
+    const request = {
+      user: { userId: 'user-1', accessToken: 'test-token' },
+    } as never;
 
-    const created = await service.create('user-1', {
-      title: 'Assinatura',
-      amount: 49.9,
-      type: TransactionType.EXPENSE,
-      category: 'Software',
-      occurredAt: '2026-05-09T00:00:00.000Z',
-    });
+    const created = await service.create(
+      { accessToken: 'test-token' },
+      'user-1',
+      {
+        title: 'Assinatura',
+        amount: 49.9,
+        type: TransactionType.EXPENSE,
+        category: 'Software',
+        occurredAt: '2026-05-09T00:00:00.000Z',
+      },
+    );
 
     const updated = await controller.update(request, created.id, {
       category: 'Ferramentas',

@@ -4,6 +4,8 @@ import request from 'supertest';
 import { App } from 'supertest/types';
 import { AppModule } from '../src/app.module';
 import { JwtAuthGuard } from '../src/auth/jwt-auth.guard';
+import { InMemoryTransactionsRepository } from '../src/transactions/in-memory-transactions.repository';
+import { TRANSACTIONS_REPOSITORY } from '../src/transactions/transactions.repository';
 
 describe('TransactionsController (e2e)', () => {
   let app: INestApplication<App>;
@@ -14,12 +16,20 @@ describe('TransactionsController (e2e)', () => {
     })
       .overrideGuard(JwtAuthGuard)
       .useValue({
-        canActivate: (context: { switchToHttp: () => { getRequest: () => { user?: { userId: string } } } }) => {
+        canActivate: (context: {
+          switchToHttp: () => {
+            getRequest: () => {
+              user?: { accessToken: string; userId: string };
+            };
+          };
+        }) => {
           const request = context.switchToHttp().getRequest();
-          request.user = { userId: 'user-1' };
+          request.user = { userId: 'user-1', accessToken: 'test-token' };
           return true;
         },
       })
+      .overrideProvider(TRANSACTIONS_REPOSITORY)
+      .useValue(new InMemoryTransactionsRepository())
       .compile();
 
     app = moduleFixture.createNestApplication();

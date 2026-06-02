@@ -52,6 +52,8 @@ create index if not exists transactions_user_id_type_idx
 
 grant select, insert, update, delete on public.transactions to service_role;
 grant select, insert, update, delete on public.profiles to service_role;
+grant select, insert, update, delete on public.transactions to authenticated;
+grant select, update on public.profiles to authenticated;
 
 alter table public.profiles enable row level security;
 alter table public.transactions enable row level security;

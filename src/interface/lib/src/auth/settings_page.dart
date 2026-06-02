@@ -134,6 +134,9 @@ class _SettingsPageState extends State<SettingsPage> {
           _avatarVersion = version;
         });
         await _refreshResolvedAvatarUrl();
+        if (!mounted) {
+          return;
+        }
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Foto de perfil atualizada.')),
         );

@@ -1,0 +1,9 @@
+.dart_tool
+build
+node_modules
+android
+.idea
+.git
+.env
+.env.*
+*.iml

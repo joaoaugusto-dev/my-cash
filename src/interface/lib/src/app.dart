@@ -68,9 +68,10 @@ ColorScheme _darkScheme() {
 }
 
 class App extends StatelessWidget {
-  const App({super.key, required this.themeController});
+  const App({super.key, required this.themeController, this.bootstrapError});
 
   final AppThemeController themeController;
+  final String? bootstrapError;
 
   @override
   Widget build(BuildContext context) {
@@ -173,7 +174,48 @@ class App extends StatelessWidget {
           useMaterial3: true,
         ),
         themeMode: themeController.themeMode,
-        home: AuthGate(themeController: themeController),
+        home: bootstrapError == null
+            ? AuthGate(themeController: themeController)
+            : _BootstrapErrorPage(message: bootstrapError!),
+      ),
+    );
+  }
+}
+
+class _BootstrapErrorPage extends StatelessWidget {
+  const _BootstrapErrorPage({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 560),
+            child: Card(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.error_outline_rounded, size: 52),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Configuração inválida do app',
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.titleLarge,
+                    ),
+                    const SizedBox(height: 12),
+                    Text(message, textAlign: TextAlign.center),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

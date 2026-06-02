@@ -32,22 +32,25 @@ Create a local `.env` file in this folder based on [.env.example](.env.example):
 ```env
 PORT=3000
 SUPABASE_URL=
-SUPABASE_SERVICE_ROLE_KEY=
-SUPABASE_JWT_SECRET=
+SUPABASE_ANON_KEY=
 CORS_ORIGIN=http://localhost:4200,http://localhost:3000
 ```
 
-Use the project URL in `SUPABASE_URL`, the project service role key in `SUPABASE_SERVICE_ROLE_KEY`, and the Supabase JWT secret in `SUPABASE_JWT_SECRET`. Never commit the `.env` file.
+Use the project URL in `SUPABASE_URL` and the project anon/publishable key in `SUPABASE_ANON_KEY`. Never commit the `.env` file.
+
+Do not configure `SUPABASE_SERVICE_ROLE_KEY` or `SUPABASE_JWT_SECRET` for normal user routes. User requests must run with the user's Supabase access token so Row Level Security remains active.
 
 The backend rejects unknown CORS origins by default and only allows a local development allowlist unless `CORS_ORIGIN` is set explicitly.
 
-Protected routes validate access tokens against Supabase JWKS at `GET /auth/v1/.well-known/jwks.json`.
+Protected routes validate access tokens against Supabase JWKS at `GET /auth/v1/.well-known/jwks.json`. Production projects should use Supabase asymmetric signing keys so the API never needs the shared JWT secret.
 
-The backend validates the Supabase access token on `GET /auth/me` and resolves every financial record by authenticated user.
+The backend validates the Supabase access token on `GET /auth/me` and resolves every financial record by authenticated user without returning raw JWT claims.
 
 The transactions domain uses a `transactions` table in Supabase with a `user_id` column so each user only sees their own entries and exits.
 
 Row-level security is enabled in [supabase/schema.sql](supabase/schema.sql). Keep it enabled in production.
+
+The schema grants table privileges to `authenticated` because API requests now reach Supabase with the user's JWT. RLS policies still restrict every profile and transaction operation to `auth.uid()`.
 
 To make the app functional, apply the SQL schema in [supabase/schema.sql](supabase/schema.sql) in the Supabase SQL Editor before starting the backend or Flutter app.
 

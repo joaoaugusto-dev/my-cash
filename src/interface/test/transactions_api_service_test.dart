@@ -47,7 +47,7 @@ void main() {
 
     final service = TransactionsApiService(
       apiBaseUrl: 'https://api.example.com',
-      accessToken: 'token-123',
+      accessTokenProvider: () => 'token-123',
       client: client,
     );
 
@@ -87,7 +87,7 @@ void main() {
 
     final service = TransactionsApiService(
       apiBaseUrl: 'https://api.example.com',
-      accessToken: 'token-123',
+      accessTokenProvider: () => 'token-123',
       client: client,
     );
 
@@ -107,5 +107,46 @@ void main() {
 
     expect(created.id, 'created-1');
     expect(created.title, 'Lanche');
+  });
+
+  test('uses the latest access token for every request', () async {
+    var issuedTokenCounter = 0;
+    final authorizationHeaders = <String>[];
+    final client = MockClient((request) async {
+      authorizationHeaders.add(request.headers['Authorization'] ?? '');
+      expect(request.url.queryParameters.containsKey('access_token'), isFalse);
+
+      if (request.url.path.endsWith('/transactions')) {
+        return http.Response(jsonEncode([]), 200);
+      }
+
+      return http.Response(
+        jsonEncode({
+          'month': '2026-05',
+          'income': 0,
+          'expense': 0,
+          'balance': 0,
+          'entriesCount': 0,
+          'exitsCount': 0,
+        }),
+        200,
+      );
+    });
+
+    final service = TransactionsApiService(
+      apiBaseUrl: 'https://api.example.com',
+      accessTokenProvider: () {
+        issuedTokenCounter += 1;
+        return 'token-$issuedTokenCounter';
+      },
+      client: client,
+    );
+
+    await service.fetchDashboard(month: '2026-05');
+
+    expect(
+      authorizationHeaders,
+      containsAll(['Bearer token-1', 'Bearer token-2']),
+    );
   });
 }

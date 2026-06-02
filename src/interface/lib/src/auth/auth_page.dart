@@ -73,10 +73,20 @@ class _AuthPageState extends State<AuthPage> {
 
     try {
       final supabase = Supabase.instance.client;
+      if (kIsWeb) {
+        await _signInWithGoogleOnWeb(supabase);
+        return;
+      }
+
       if (_shouldUseNativeGoogleSignIn) {
-        final googleSignIn = GoogleSignIn(
-          serverClientId: AppEnv.googleWebClientId,
-        );
+        final serverClientId = AppEnv.googleWebClientId;
+        if (serverClientId.isEmpty) {
+          throw StateError(
+            'GOOGLE_WEB_CLIENT_ID não configurado para login nativo.',
+          );
+        }
+
+        final googleSignIn = GoogleSignIn(serverClientId: serverClientId);
         final googleUser = await googleSignIn.signIn();
 
         if (googleUser == null) {
@@ -100,10 +110,16 @@ class _AuthPageState extends State<AuthPage> {
         return;
       }
 
-      await supabase.auth.signInWithOAuth(
+      final launched = await supabase.auth.signInWithOAuth(
         OAuthProvider.google,
-        redirectTo: Uri.base.origin,
+        redirectTo: null,
+        queryParams: const {'prompt': 'select_account'},
       );
+      if (!launched) {
+        throw StateError(
+          'Não foi possível abrir o fluxo de login Google no navegador.',
+        );
+      }
     } on AuthException catch (error) {
       _showMessage(error.message);
     } catch (error) {
@@ -115,6 +131,62 @@ class _AuthPageState extends State<AuthPage> {
         });
       }
     }
+  }
+
+  Future<void> _signInWithGoogleOnWeb(SupabaseClient supabase) async {
+    final launched = await supabase.auth.signInWithOAuth(
+      OAuthProvider.google,
+      redirectTo: _safeRedirectOrigin(),
+      queryParams: const {'prompt': 'select_account'},
+    );
+    if (!launched) {
+      throw StateError(
+        'Não foi possível abrir o fluxo de login Google no navegador.',
+      );
+    }
+  }
+
+  Future<void> _sendPasswordReset() async {
+    final email = _emailController.text.trim();
+    if (email.isEmpty || !email.contains('@')) {
+      _showMessage('Informe seu e-mail para receber a recuperação de senha.');
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      await Supabase.instance.client.auth.resetPasswordForEmail(
+        email,
+        redirectTo: _safeRedirectOrigin(),
+      );
+      _showMessage('Enviamos as instruções de recuperação para o seu e-mail.');
+    } on AuthException catch (error) {
+      _showMessage(error.message);
+    } catch (error) {
+      _showMessage('Falha ao solicitar recuperação: $error');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  String _safeRedirectOrigin() {
+    if (!kIsWeb) {
+      return 'mycash://auth-callback';
+    }
+
+    final currentUri = Uri.base;
+    if (currentUri.scheme != 'http' && currentUri.scheme != 'https') {
+      throw StateError('Origem web inválida para OAuth: ${currentUri.scheme}.');
+    }
+
+    return currentUri.origin;
   }
 
   bool get _shouldUseNativeGoogleSignIn {
@@ -309,6 +381,13 @@ class _AuthPageState extends State<AuthPage> {
                                   : 'Ainda não tenho conta. Criar cadastro',
                             ),
                           ),
+                          if (!_isSignUp) ...[
+                            const SizedBox(height: 4),
+                            TextButton(
+                              onPressed: _isLoading ? null : _sendPasswordReset,
+                              child: const Text('Esqueci minha senha'),
+                            ),
+                          ],
                         ],
                       ),
                     ),
