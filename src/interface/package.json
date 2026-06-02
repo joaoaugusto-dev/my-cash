@@ -1,4 +1,10 @@
 {
+  "name": "my-cash-interface",
+  "private": true,
+  "scripts": {
+    "build:prod": "flutter build web --release --dart-define-from-file=.prod.env",
+    "build:vercel": "bash scripts/vercel-build.sh"
+  },
   "dependencies": {
     "jose": "^6.2.3"
   }
