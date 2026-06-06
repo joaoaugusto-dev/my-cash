@@ -669,8 +669,8 @@ class _AuthPageState extends State<AuthPage> {
                                     onPressed: _isLoading
                                         ? null
                                         : _signInWithGoogle,
-                                    icon: Image.network(
-                                      'https://developers.google.com/identity/images/g-logo.png',
+                                    icon: Image.asset(
+                                      'assets/google_logo.png',
                                       width: 18,
                                       height: 18,
                                     ),
