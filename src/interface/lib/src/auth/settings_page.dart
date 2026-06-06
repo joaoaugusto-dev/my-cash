@@ -29,11 +29,12 @@ class _SettingsPageState extends State<SettingsPage> {
   final _formKey = GlobalKey<FormState>();
   final _fullNameController = TextEditingController();
   final _emailController = TextEditingController();
-  final _passwordController = TextEditingController();
 
   bool _isSaving = false;
   bool _isUploadingAvatar = false;
   bool _isResolvingAvatar = false;
+  bool _isChangingTheme = false;
+  ThemeMode? _pendingThemeMode;
   String? _avatarUrl;
   String? _avatarPath;
   String? _avatarVersion;
@@ -68,7 +69,6 @@ class _SettingsPageState extends State<SettingsPage> {
   void dispose() {
     _fullNameController.dispose();
     _emailController.dispose();
-    _passwordController.dispose();
     super.dispose();
   }
 
@@ -236,8 +236,6 @@ class _SettingsPageState extends State<SettingsPage> {
       }
 
       final fullName = _fullNameController.text.trim();
-      final email = _emailController.text.trim();
-      final password = _passwordController.text.trim();
       final currentMetadata = Map<String, dynamic>.from(
         user.userMetadata ?? const {},
       );
@@ -250,15 +248,13 @@ class _SettingsPageState extends State<SettingsPage> {
                   '')
               .toString()
               .trim();
-      final emailChanged = email != (user.email ?? '').trim();
       final nameChanged = fullName != currentFullName;
-      final passwordChanged = password.isNotEmpty;
       final avatarChanged =
           _avatarUrl != currentAvatarUrl ||
           _avatarPath != currentAvatarPath ||
           _avatarVersion != currentAvatarVersion;
 
-      if (!emailChanged && !nameChanged && !passwordChanged && !avatarChanged) {
+      if (!nameChanged && !avatarChanged) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Nenhuma alteração para salvar.')),
@@ -297,24 +293,14 @@ class _SettingsPageState extends State<SettingsPage> {
         updatedData = metadata;
       }
 
-      await auth.updateUser(
-        UserAttributes(
-          email: emailChanged ? email : null,
-          password: passwordChanged ? password : null,
-          data: updatedData,
-        ),
-      );
+      await auth.updateUser(UserAttributes(data: updatedData));
 
-      _passwordController.clear();
       _syncUserData();
       await _refreshResolvedAvatarUrl();
 
       if (mounted) {
-        final emailMessage = emailChanged
-            ? ' Confira a caixa de entrada para confirmar o novo e-mail.'
-            : '';
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Conta atualizada com sucesso.$emailMessage')),
+          const SnackBar(content: Text('Perfil atualizado com sucesso.')),
         );
       }
     } catch (error) {
@@ -415,9 +401,31 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _setThemeMode(ThemeMode mode) async {
-    await widget.themeController.setThemeMode(mode);
-    if (mounted) {
-      setState(() {});
+    if (_isChangingTheme || widget.themeController.themeMode == mode) {
+      return;
+    }
+
+    setState(() {
+      _isChangingTheme = true;
+      _pendingThemeMode = mode;
+    });
+
+    try {
+      await widget.themeController.setThemeMode(mode);
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            const SnackBar(content: Text('Aparência atualizada.')),
+          );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isChangingTheme = false;
+          _pendingThemeMode = null;
+        });
+      }
     }
   }
 
@@ -426,241 +434,274 @@ class _SettingsPageState extends State<SettingsPage> {
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final currentMode = widget.themeController.themeMode;
+    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
     final profileInitials = initialsFromProfile(
       fullName: _fullNameController.text,
       email: _emailController.text,
     );
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Configurações')),
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [
-              Theme.of(context).scaffoldBackgroundColor,
-              colorScheme.secondary.withValues(alpha: isDark ? 0.16 : 0.09),
-            ],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-        ),
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
-          children: [
-            _SettingsSection(
-              title: 'Perfil da conta',
-              subtitle: 'Edite seus dados de acesso e identificação.',
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  children: [
-                    Row(
-                      children: [
-                        CircleAvatar(
-                          radius: 34,
-                          backgroundColor: colorScheme.primary.withValues(
-                            alpha: isDark ? 0.35 : 0.2,
-                          ),
-                          backgroundImage: _resolvedAvatarUrl.isNotEmpty
-                              ? NetworkImage(_resolvedAvatarUrl)
-                              : null,
-                          child: _isResolvingAvatar
-                              ? const SizedBox(
-                                  width: 18,
-                                  height: 18,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : _resolvedAvatarUrl.isEmpty
-                              ? Text(
-                                  profileInitials,
-                                  style: Theme.of(context).textTheme.titleMedium
-                                      ?.copyWith(fontWeight: FontWeight.w800),
-                                )
-                              : null,
-                        ),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+      extendBody: true,
+      backgroundColor: Colors.transparent,
+      body: Stack(
+        children: [
+          const _SettingsBackground(),
+          SafeArea(
+            child: ListView(
+              physics: const BouncingScrollPhysics(),
+              padding: EdgeInsets.fromLTRB(20, 14, 20, bottomInset + 30),
+              children: [
+                _SettingsTopBar(onBack: () => Navigator.of(context).maybePop()),
+                const SizedBox(height: 16),
+                _SettingsAnimatedSection(
+                  order: 0,
+                  child: _SettingsSection(
+                    title: 'Perfil da conta',
+                    subtitle: 'Edite sua identificação e foto de perfil.',
+                    child: Form(
+                      key: _formKey,
+                      child: Column(
+                        children: [
+                          Row(
                             children: [
-                              Text(
-                                'Foto de perfil',
-                                style: Theme.of(context).textTheme.titleMedium
-                                    ?.copyWith(fontWeight: FontWeight.w700),
+                              CircleAvatar(
+                                radius: 34,
+                                backgroundColor: colorScheme.primary.withValues(
+                                  alpha: isDark ? 0.35 : 0.2,
+                                ),
+                                backgroundImage: _resolvedAvatarUrl.isNotEmpty
+                                    ? NetworkImage(_resolvedAvatarUrl)
+                                    : null,
+                                child: _isResolvingAvatar
+                                    ? const SizedBox(
+                                        width: 18,
+                                        height: 18,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                        ),
+                                      )
+                                    : _resolvedAvatarUrl.isEmpty
+                                    ? Text(
+                                        profileInitials,
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .titleMedium
+                                            ?.copyWith(
+                                              fontWeight: FontWeight.w800,
+                                            ),
+                                      )
+                                    : null,
                               ),
-                              const SizedBox(height: 4),
-                              Text(
-                                'Avatar 256x256 comprimido, salvo no Supabase Storage.',
-                                style: Theme.of(context).textTheme.bodySmall,
+                              const SizedBox(width: 14),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Foto de perfil',
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .titleMedium
+                                          ?.copyWith(
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      _emailController.text,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodySmall
+                                          ?.copyWith(
+                                            color: colorScheme.onSurface
+                                                .withValues(alpha: 0.58),
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ],
                           ),
-                        ),
-                      ],
+                          const SizedBox(height: 12),
+                          LayoutBuilder(
+                            builder: (context, constraints) {
+                              final isCompact = constraints.maxWidth < 340;
+                              final uploadButton = OutlinedButton.icon(
+                                onPressed: _isUploadingAvatar
+                                    ? null
+                                    : _pickAndUploadAvatar,
+                                icon: AnimatedSwitcher(
+                                  duration: const Duration(milliseconds: 180),
+                                  child: _isUploadingAvatar
+                                      ? const SizedBox(
+                                          key: ValueKey('uploading'),
+                                          width: 14,
+                                          height: 14,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                          ),
+                                        )
+                                      : const Icon(
+                                          Icons.photo_camera_back_rounded,
+                                          key: ValueKey('camera'),
+                                        ),
+                                ),
+                                label: Text(
+                                  _isUploadingAvatar
+                                      ? 'Enviando...'
+                                      : 'Alterar foto',
+                                ),
+                              );
+                              final removeButton = OutlinedButton(
+                                onPressed:
+                                    _isUploadingAvatar ||
+                                        ((_avatarUrl ?? '').isEmpty &&
+                                            (_avatarPath ?? '').isEmpty)
+                                    ? null
+                                    : _removeAvatar,
+                                child: const Text('Remover'),
+                              );
+
+                              if (isCompact) {
+                                return Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
+                                  children: [
+                                    uploadButton,
+                                    const SizedBox(height: 10),
+                                    removeButton,
+                                  ],
+                                );
+                              }
+
+                              return Row(
+                                children: [
+                                  Expanded(child: uploadButton),
+                                  const SizedBox(width: 10),
+                                  removeButton,
+                                ],
+                              );
+                            },
+                          ),
+                          const SizedBox(height: 14),
+                          TextFormField(
+                            controller: _fullNameController,
+                            textInputAction: TextInputAction.done,
+                            enabled: !_isSaving,
+                            decoration: const InputDecoration(
+                              labelText: 'Nome completo',
+                              prefixIcon: Icon(Icons.person_rounded),
+                            ),
+                          ),
+                          const SizedBox(height: 18),
+                          SizedBox(
+                            width: double.infinity,
+                            child: FilledButton.icon(
+                              onPressed: _isSaving ? null : _saveAccountData,
+                              icon: AnimatedSwitcher(
+                                duration: const Duration(milliseconds: 180),
+                                child: _isSaving
+                                    ? const SizedBox(
+                                        key: ValueKey('saving'),
+                                        width: 16,
+                                        height: 16,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                        ),
+                                      )
+                                    : const Icon(
+                                        Icons.save_rounded,
+                                        key: ValueKey('save'),
+                                      ),
+                              ),
+                              label: AnimatedSwitcher(
+                                duration: const Duration(milliseconds: 180),
+                                child: Text(
+                                  _isSaving
+                                      ? 'Salvando...'
+                                      : 'Salvar alterações',
+                                  key: ValueKey(_isSaving),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                    const SizedBox(height: 12),
-                    Row(
+                  ),
+                ),
+                const SizedBox(height: 16),
+                _SettingsAnimatedSection(
+                  order: 1,
+                  child: _SettingsSection(
+                    title: 'Aparência',
+                    subtitle: 'Escolha o modo visual do aplicativo.',
+                    child: Column(
                       children: [
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            onPressed: _isUploadingAvatar
-                                ? null
-                                : _pickAndUploadAvatar,
-                            icon: _isUploadingAvatar
-                                ? const SizedBox(
-                                    width: 14,
-                                    height: 14,
+                        _ThemeModeSelector(
+                          currentMode: currentMode,
+                          isChanging: _isChangingTheme,
+                          pendingMode: _pendingThemeMode,
+                          onChanged: _setThemeMode,
+                        ),
+                        const SizedBox(height: 14),
+                        AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 260),
+                          child: Container(
+                            key: ValueKey(currentMode),
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: colorScheme.primary.withValues(
+                                alpha: isDark ? 0.2 : 0.1,
+                              ),
+                              borderRadius: BorderRadius.circular(18),
+                              border: Border.all(
+                                color: colorScheme.outline.withValues(
+                                  alpha: 0.5,
+                                ),
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                if (_isChangingTheme) ...[
+                                  const SizedBox(
+                                    width: 16,
+                                    height: 16,
                                     child: CircularProgressIndicator(
                                       strokeWidth: 2,
                                     ),
-                                  )
-                                : const Icon(Icons.photo_camera_back_rounded),
-                            label: Text(
-                              _isUploadingAvatar
-                                  ? 'Enviando...'
-                                  : 'Alterar foto',
+                                  ),
+                                  const SizedBox(width: 10),
+                                ],
+                                Expanded(
+                                  child: Text(
+                                    currentMode == ThemeMode.system
+                                        ? 'Modo atual: seguir configurações do sistema'
+                                        : currentMode == ThemeMode.dark
+                                        ? 'Modo atual: escuro'
+                                        : 'Modo atual: claro',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .bodyMedium
+                                        ?.copyWith(fontWeight: FontWeight.w700),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ),
-                        const SizedBox(width: 10),
-                        OutlinedButton(
-                          onPressed:
-                              _isUploadingAvatar ||
-                                  ((_avatarUrl ?? '').isEmpty &&
-                                      (_avatarPath ?? '').isEmpty)
-                              ? null
-                              : _removeAvatar,
-                          child: const Text('Remover'),
-                        ),
                       ],
                     ),
-                    const SizedBox(height: 14),
-                    TextFormField(
-                      controller: _fullNameController,
-                      textInputAction: TextInputAction.next,
-                      decoration: const InputDecoration(
-                        labelText: 'Nome completo',
-                        prefixIcon: Icon(Icons.person_rounded),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      controller: _emailController,
-                      keyboardType: TextInputType.emailAddress,
-                      textInputAction: TextInputAction.next,
-                      decoration: const InputDecoration(
-                        labelText: 'E-mail',
-                        prefixIcon: Icon(Icons.alternate_email_rounded),
-                      ),
-                      validator: (value) {
-                        final email = (value ?? '').trim();
-                        if (email.isEmpty) {
-                          return 'Informe seu e-mail';
-                        }
-                        if (!email.contains('@')) {
-                          return 'Informe um e-mail válido';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      controller: _passwordController,
-                      obscureText: true,
-                      decoration: const InputDecoration(
-                        labelText: 'Nova senha (opcional)',
-                        prefixIcon: Icon(Icons.lock_outline_rounded),
-                      ),
-                      validator: (value) {
-                        final password = (value ?? '').trim();
-                        if (password.isNotEmpty && password.length < 6) {
-                          return 'A nova senha precisa ter ao menos 6 caracteres';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 18),
-                    SizedBox(
-                      width: double.infinity,
-                      child: FilledButton.icon(
-                        onPressed: _isSaving ? null : _saveAccountData,
-                        icon: _isSaving
-                            ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : const Icon(Icons.save_rounded),
-                        label: Text(
-                          _isSaving ? 'Salvando...' : 'Salvar alterações',
-                        ),
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
-              ),
+              ],
             ),
-            const SizedBox(height: 16),
-            _SettingsSection(
-              title: 'Aparência',
-              subtitle: 'Escolha o modo visual do aplicativo.',
-              child: Column(
-                children: [
-                  SegmentedButton<ThemeMode>(
-                    showSelectedIcon: false,
-                    segments: const [
-                      ButtonSegment<ThemeMode>(
-                        value: ThemeMode.light,
-                        label: Text('Claro'),
-                        icon: Icon(Icons.wb_sunny_rounded),
-                      ),
-                      ButtonSegment<ThemeMode>(
-                        value: ThemeMode.dark,
-                        label: Text('Escuro'),
-                        icon: Icon(Icons.dark_mode_rounded),
-                      ),
-                      ButtonSegment<ThemeMode>(
-                        value: ThemeMode.system,
-                        label: Text('Sistema'),
-                        icon: Icon(Icons.settings_suggest_rounded),
-                      ),
-                    ],
-                    selected: {currentMode},
-                    onSelectionChanged: (selection) {
-                      _setThemeMode(selection.first);
-                    },
-                  ),
-                  const SizedBox(height: 14),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: colorScheme.primary.withValues(
-                        alpha: isDark ? 0.2 : 0.1,
-                      ),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                        color: colorScheme.outline.withValues(alpha: 0.5),
-                      ),
-                    ),
-                    child: Text(
-                      currentMode == ThemeMode.system
-                          ? 'Modo atual: seguir configurações do sistema'
-                          : currentMode == ThemeMode.dark
-                          ? 'Modo atual: escuro'
-                          : 'Modo atual: claro',
-                      style: Theme.of(context).textTheme.bodyMedium,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -683,18 +724,16 @@ class _SettingsSection extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Container(
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: colorScheme.surface.withValues(alpha: isDark ? 0.72 : 0.84),
-        borderRadius: BorderRadius.circular(24),
+        color: colorScheme.surface.withValues(alpha: isDark ? 0.72 : 0.86),
+        borderRadius: BorderRadius.circular(28),
         border: Border.all(color: colorScheme.outline.withValues(alpha: 0.5)),
         boxShadow: [
           BoxShadow(
-            color: colorScheme.secondary.withValues(
-              alpha: isDark ? 0.09 : 0.08,
-            ),
-            blurRadius: 28,
-            offset: const Offset(0, 12),
+            color: Colors.black.withValues(alpha: isDark ? 0.18 : 0.05),
+            blurRadius: 24,
+            offset: const Offset(0, 14),
           ),
         ],
       ),
@@ -705,13 +744,354 @@ class _SettingsSection extends StatelessWidget {
             title,
             style: Theme.of(
               context,
-            ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+            ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
           ),
           const SizedBox(height: 4),
-          Text(subtitle, style: Theme.of(context).textTheme.bodyMedium),
+          Text(
+            subtitle,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: colorScheme.onSurface.withValues(alpha: 0.62),
+              fontWeight: FontWeight.w600,
+            ),
+          ),
           const SizedBox(height: 16),
           child,
         ],
+      ),
+    );
+  }
+}
+
+class _SettingsBackground extends StatelessWidget {
+  const _SettingsBackground();
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: isDark
+              ? const [Color(0xFF110A22), Color(0xFF1B1230), Color(0xFF0D0B16)]
+              : const [Color(0xFFFBFAFF), Color(0xFFF4F0FF), Color(0xFFFFFFFF)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+      ),
+      child: Stack(
+        children: [
+          Positioned(
+            top: -100,
+            right: -80,
+            child: _SettingsGlow(
+              size: 260,
+              color: const Color(
+                0xFF8B2CEB,
+              ).withValues(alpha: isDark ? 0.22 : 0.16),
+            ),
+          ),
+          Positioned(
+            top: 220,
+            left: -120,
+            child: _SettingsGlow(
+              size: 300,
+              color: const Color(
+                0xFF22C55E,
+              ).withValues(alpha: isDark ? 0.10 : 0.08),
+            ),
+          ),
+          Positioned(
+            bottom: -110,
+            right: -60,
+            child: _SettingsGlow(
+              size: 260,
+              color: const Color(
+                0xFF5B9BFF,
+              ).withValues(alpha: isDark ? 0.12 : 0.10),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SettingsGlow extends StatelessWidget {
+  const _SettingsGlow({required this.size, required this.color});
+
+  final double size;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: RadialGradient(colors: [color, color.withValues(alpha: 0)]),
+        ),
+      ),
+    );
+  }
+}
+
+class _SettingsTopBar extends StatelessWidget {
+  const _SettingsTopBar({required this.onBack});
+
+  final VoidCallback onBack;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Row(
+      children: [
+        _RoundIconButton(
+          tooltip: 'Voltar',
+          icon: Icons.arrow_back_rounded,
+          onPressed: onBack,
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(
+            'Configurações',
+            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+              color: colorScheme.onSurface,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _SettingsAnimatedSection extends StatefulWidget {
+  const _SettingsAnimatedSection({required this.order, required this.child});
+
+  final int order;
+  final Widget child;
+
+  @override
+  State<_SettingsAnimatedSection> createState() =>
+      _SettingsAnimatedSectionState();
+}
+
+class _SettingsAnimatedSectionState extends State<_SettingsAnimatedSection> {
+  bool _visible = false;
+
+  @override
+  void initState() {
+    super.initState();
+    Future<void>.delayed(Duration(milliseconds: widget.order * 80), () {
+      if (mounted) {
+        setState(() {
+          _visible = true;
+        });
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (MediaQuery.disableAnimationsOf(context)) {
+      return widget.child;
+    }
+
+    return AnimatedSlide(
+      offset: _visible ? Offset.zero : const Offset(0, 0.04),
+      duration: const Duration(milliseconds: 460),
+      curve: Curves.easeOutCubic,
+      child: AnimatedOpacity(
+        opacity: _visible ? 1 : 0,
+        duration: const Duration(milliseconds: 420),
+        curve: Curves.easeOutCubic,
+        child: widget.child,
+      ),
+    );
+  }
+}
+
+class _RoundIconButton extends StatelessWidget {
+  const _RoundIconButton({
+    required this.tooltip,
+    required this.icon,
+    required this.onPressed,
+  });
+
+  final String tooltip;
+  final IconData icon;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Tooltip(
+      message: tooltip,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: onPressed,
+        child: Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: colorScheme.surface.withValues(alpha: 0.78),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: colorScheme.outline.withValues(alpha: 0.52),
+            ),
+          ),
+          child: Icon(icon, color: colorScheme.primary),
+        ),
+      ),
+    );
+  }
+}
+
+class _ThemeModeSelector extends StatelessWidget {
+  const _ThemeModeSelector({
+    required this.currentMode,
+    required this.isChanging,
+    required this.pendingMode,
+    required this.onChanged,
+  });
+
+  final ThemeMode currentMode;
+  final bool isChanging;
+  final ThemeMode? pendingMode;
+  final ValueChanged<ThemeMode> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final options = [
+      _ThemeModeOptionData(
+        mode: ThemeMode.light,
+        label: 'Claro',
+        icon: Icons.wb_sunny_rounded,
+      ),
+      _ThemeModeOptionData(
+        mode: ThemeMode.dark,
+        label: 'Escuro',
+        icon: Icons.dark_mode_rounded,
+      ),
+      _ThemeModeOptionData(
+        mode: ThemeMode.system,
+        label: 'Sistema',
+        icon: Icons.settings_suggest_rounded,
+      ),
+    ];
+
+    return Row(
+      children: [
+        for (var index = 0; index < options.length; index++) ...[
+          Expanded(
+            child: _ThemeModeOption(
+              data: options[index],
+              selected: currentMode == options[index].mode,
+              isChanging: isChanging && pendingMode == options[index].mode,
+              onTap: isChanging ? null : () => onChanged(options[index].mode),
+            ),
+          ),
+          if (index != options.length - 1) const SizedBox(width: 8),
+        ],
+      ],
+    );
+  }
+}
+
+class _ThemeModeOptionData {
+  const _ThemeModeOptionData({
+    required this.mode,
+    required this.label,
+    required this.icon,
+  });
+
+  final ThemeMode mode;
+  final String label;
+  final IconData icon;
+}
+
+class _ThemeModeOption extends StatelessWidget {
+  const _ThemeModeOption({
+    required this.data,
+    required this.selected,
+    required this.isChanging,
+    required this.onTap,
+  });
+
+  final _ThemeModeOptionData data;
+  final bool selected;
+  final bool isChanging;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(20),
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        decoration: BoxDecoration(
+          gradient: selected
+              ? const LinearGradient(
+                  colors: [Color(0xFF6D28D9), Color(0xFF8B2CEB)],
+                )
+              : null,
+          color: selected ? null : colorScheme.surface.withValues(alpha: 0.62),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: selected
+                ? Colors.white.withValues(alpha: 0.18)
+                : colorScheme.outline.withValues(alpha: 0.52),
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              data.icon,
+              size: 20,
+              color: selected ? Colors.white : colorScheme.primary,
+            ),
+            const SizedBox(width: 8),
+            Flexible(
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 180),
+                child: isChanging
+                    ? const SizedBox(
+                        key: ValueKey('loader'),
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : FittedBox(
+                        key: ValueKey(data.label),
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          data.label,
+                          maxLines: 1,
+                          style: Theme.of(context).textTheme.labelLarge
+                              ?.copyWith(
+                                color: selected
+                                    ? Colors.white
+                                    : colorScheme.onSurface,
+                                fontWeight: FontWeight.w900,
+                              ),
+                        ),
+                      ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

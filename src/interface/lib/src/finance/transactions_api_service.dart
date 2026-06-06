@@ -59,7 +59,13 @@ class TransactionsApiService {
     return jsonDecode(response.body);
   }
 
-  Uri _uri(String path) => Uri.parse('$apiBaseUrl$path');
+  Uri _uri(String path) {
+    final normalizedBaseUrl = apiBaseUrl.endsWith('/')
+        ? apiBaseUrl
+        : '$apiBaseUrl/';
+    final normalizedPath = path.startsWith('/') ? path.substring(1) : path;
+    return Uri.parse(normalizedBaseUrl).resolve(normalizedPath);
+  }
 
   Future<Map<String, String>> _headers() async {
     final accessToken = (await accessTokenProvider()).trim();

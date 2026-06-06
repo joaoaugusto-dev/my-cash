@@ -149,4 +149,43 @@ void main() {
       containsAll(['Bearer token-1', 'Bearer token-2']),
     );
   });
+
+  test('normalizes base urls with trailing slash and /api path', () async {
+    final requestedUrls = <Uri>[];
+    final client = MockClient((request) async {
+      requestedUrls.add(request.url);
+
+      if (request.url.path.endsWith('/summary')) {
+        return http.Response(
+          jsonEncode({
+            'month': '2026-05',
+            'income': 0,
+            'expense': 0,
+            'balance': 0,
+            'entriesCount': 0,
+            'exitsCount': 0,
+          }),
+          200,
+        );
+      }
+
+      return http.Response(jsonEncode([]), 200);
+    });
+
+    final service = TransactionsApiService(
+      apiBaseUrl: 'https://api.example.com/api/',
+      accessTokenProvider: () => 'token-123',
+      client: client,
+    );
+
+    await service.fetchDashboard(month: '2026-05');
+
+    expect(
+      requestedUrls.map((url) => url.toString()),
+      containsAll([
+        'https://api.example.com/api/transactions/summary?month=2026-05',
+        'https://api.example.com/api/transactions?month=2026-05',
+      ]),
+    );
+  });
 }
