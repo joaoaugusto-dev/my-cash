@@ -669,10 +669,17 @@ class _AuthPageState extends State<AuthPage> {
                                     onPressed: _isLoading
                                         ? null
                                         : _signInWithGoogle,
-                                    icon: Image.asset(
-                                      'assets/google_logo.png',
-                                      width: 18,
-                                      height: 18,
+                                    icon: ClipOval(
+                                      child: Container(
+                                        width: 24,
+                                        height: 24,
+                                        color: Colors.white,
+                                        padding: const EdgeInsets.all(4),
+                                        child: Image.asset(
+                                          'assets/google_logo.png',
+                                          fit: BoxFit.contain,
+                                        ),
+                                      ),
                                     ),
                                     label: 'Continuar com Google',
                                   ),
@@ -856,7 +863,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
     _tokenController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
-    
+
     if (_step == 2 && !_passwordUpdated) {
       Supabase.instance.client.auth.signOut();
     }
@@ -1138,8 +1145,10 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
                                     },
                                     onSubmit: () {
                                       if (!_isLoading) {
-                                        if (_step == 0) _sendCode();
-                                        else if (_step == 2) _updatePassword();
+                                        if (_step == 0)
+                                          _sendCode();
+                                        else if (_step == 2)
+                                          _updatePassword();
                                       }
                                     },
                                   ),
@@ -2309,10 +2318,7 @@ class _AuthHeader extends StatelessWidget {
           ),
           child: Padding(
             padding: const EdgeInsets.all(8),
-            child: Image.asset(
-              'assets/logo.png',
-              fit: BoxFit.contain,
-            ),
+            child: Image.asset('assets/logo.png', fit: BoxFit.contain),
           ),
         ),
         const SizedBox(width: 14),
