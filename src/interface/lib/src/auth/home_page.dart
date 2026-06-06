@@ -37,10 +37,12 @@ class _HomePageState extends State<HomePage> {
   String _avatarStateKey = '';
   int _selectedNavIndex = 0;
   bool _isResolvingAvatar = false;
+  late final PageController _pageController;
 
   @override
   void initState() {
     super.initState();
+    _pageController = PageController(initialPage: _selectedNavIndex);
     _preferencesFuture = SharedPreferences.getInstance();
     _apiService = TransactionsApiService(
       apiBaseUrl: AppEnv.apiBaseUrl,
@@ -273,29 +275,16 @@ class _HomePageState extends State<HomePage> {
   }
 
   void _handleNavSelection(int index) {
-    if (index == 0) {
-      setState(() {
-        _selectedNavIndex = 0;
-      });
-      return;
-    }
+    if (index == _selectedNavIndex) return;
 
-    if (index == 4) {
-      setState(() {
-        _selectedNavIndex = index;
-      });
-      _openSettings().whenComplete(() {
-        if (mounted) {
-          setState(() {
-            _selectedNavIndex = 0;
-          });
-        }
-      });
-      return;
-    }
+    setState(() {
+      _selectedNavIndex = index;
+    });
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Essa área entra na próxima etapa.')),
+    _pageController.animateToPage(
+      index,
+      duration: const Duration(milliseconds: 450),
+      curve: Curves.fastOutSlowIn,
     );
   }
 
@@ -399,6 +388,12 @@ class _HomePageState extends State<HomePage> {
   }
 
   @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final firstName = _extractFirstName();
     final profileInitials = _profileInitials();
@@ -413,8 +408,16 @@ class _HomePageState extends State<HomePage> {
       body: Stack(
         children: [
           const _FinanceBackground(),
-          RefreshIndicator(
-            onRefresh: () async => _refreshDashboard(),
+          PageView(
+            controller: _pageController,
+            onPageChanged: (index) {
+              setState(() {
+                _selectedNavIndex = index;
+              });
+            },
+            children: [
+              RefreshIndicator(
+                onRefresh: () async => _refreshDashboard(),
             color: colorScheme.secondary,
             child: FutureBuilder<FinancialDashboard>(
               future: _dashboardFuture,
@@ -594,6 +597,15 @@ class _HomePageState extends State<HomePage> {
               },
             ),
           ),
+              const _PlaceholderPage(title: 'Transações', icon: Icons.list_alt_rounded),
+              const _PlaceholderPage(title: 'Cartões', icon: Icons.credit_card_rounded),
+              const _PlaceholderPage(title: 'Chat IA', icon: Icons.auto_awesome_rounded),
+              SettingsPage(
+                session: widget.session,
+                themeController: widget.themeController,
+              ),
+            ],
+          ),
           Positioned(
             right: 22,
             bottom: bottomPadding + 92,
@@ -606,6 +618,7 @@ class _HomePageState extends State<HomePage> {
             right: 18,
             bottom: bottomPadding + 12,
             child: _FloatingBottomBar(
+              pageController: _pageController,
               selectedIndex: _selectedNavIndex,
               onSelected: _handleNavSelection,
             ),
@@ -780,16 +793,22 @@ class _TopIdentityBar extends StatelessWidget {
           width: 42,
           height: 42,
           decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [Color(0xFF4C1D95), Color(0xFF7C3AED)],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
+            color: colorScheme.surface.withValues(alpha: 0.9),
             borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: colorScheme.outline.withValues(alpha: 0.5),
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: colorScheme.primary.withValues(alpha: 0.14),
+                blurRadius: 14,
+                offset: const Offset(0, 8),
+              ),
+            ],
           ),
-          child: const Icon(
-            Icons.account_balance_wallet_rounded,
-            color: Colors.white,
+          child: Padding(
+            padding: const EdgeInsets.all(6),
+            child: Image.asset('assets/logo.png', fit: BoxFit.contain),
           ),
         ),
         const SizedBox(width: 10),
@@ -1824,10 +1843,12 @@ class _FloatingCreateButton extends StatelessWidget {
 
 class _FloatingBottomBar extends StatelessWidget {
   const _FloatingBottomBar({
+    required this.pageController,
     required this.selectedIndex,
     required this.onSelected,
   });
 
+  final PageController pageController;
   final int selectedIndex;
   final ValueChanged<int> onSelected;
 
@@ -1876,8 +1897,42 @@ class _FloatingBottomBar extends StatelessWidget {
                     ),
                   ],
                 ),
-                child: Row(
-                  children: [
+                child: AnimatedBuilder(
+                  animation: pageController,
+                  builder: (context, child) {
+                    final page = pageController.positions.isNotEmpty
+                        ? pageController.page ?? selectedIndex.toDouble()
+                        : selectedIndex.toDouble();
+                    
+                    return Stack(
+                      children: [
+                        Positioned.fill(
+                          child: Align(
+                            alignment: Alignment(-1.0 + (page * 0.5), 0),
+                            child: FractionallySizedBox(
+                              widthFactor: 1 / 5,
+                              child: Container(
+                                margin: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: colorScheme.primary.withValues(alpha: 0.08),
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                alignment: Alignment.topCenter,
+                                child: Container(
+                                  width: isVeryNarrow ? 30 : 36,
+                                  height: 3,
+                                  margin: EdgeInsets.only(top: isVeryNarrow ? 3 : 4),
+                                  decoration: BoxDecoration(
+                                    color: colorScheme.secondary,
+                                    borderRadius: BorderRadius.circular(999),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        Row(
+                          children: [
                     _BottomNavItem(
                       index: 0,
                       selectedIndex: selectedIndex,
@@ -1924,6 +1979,10 @@ class _FloatingBottomBar extends StatelessWidget {
                       onSelected: onSelected,
                     ),
                   ],
+                        ),
+                      ],
+                    );
+                  },
                 ),
               ),
             ),
@@ -1963,31 +2022,12 @@ class _BottomNavItem extends StatelessWidget {
       child: InkWell(
         borderRadius: BorderRadius.circular(20),
         onTap: () => onSelected(index),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 220),
-          curve: Curves.easeOutCubic,
+        child: Container(
           padding: EdgeInsets.symmetric(vertical: dense ? 4 : 5),
-          decoration: BoxDecoration(
-            color: isSelected
-                ? colorScheme.primary.withValues(alpha: 0.08)
-                : Colors.transparent,
-            borderRadius: BorderRadius.circular(20),
-          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 220),
-                width: isSelected ? (dense ? 30 : 36) : 18,
-                height: 3,
-                margin: EdgeInsets.only(bottom: dense ? 5 : 6),
-                decoration: BoxDecoration(
-                  color: isSelected
-                      ? colorScheme.secondary
-                      : Colors.transparent,
-                  borderRadius: BorderRadius.circular(999),
-                ),
-              ),
+              SizedBox(height: dense ? 8 : 9),
               Icon(
                 icon,
                 color: isSelected
@@ -2342,6 +2382,40 @@ class _TransactionComposerSheetState extends State<_TransactionComposerSheet> {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _PlaceholderPage extends StatelessWidget {
+  const _PlaceholderPage({required this.title, required this.icon});
+  final String title;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 64, color: colorScheme.secondary.withValues(alpha: 0.5)),
+          const SizedBox(height: 16),
+          Text(
+            title,
+            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w800,
+                  color: colorScheme.onSurface.withValues(alpha: 0.7),
+                ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Em breve',
+            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                  color: colorScheme.onSurface.withValues(alpha: 0.5),
+                ),
+          ),
+        ],
       ),
     );
   }

@@ -52,6 +52,17 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.4
+
+flutter_launcher_icons:
+  android: true
+  image_path: assets/logo.png
+  min_sdk_android: 21
+  web:
+    generate: true
+    image_path: assets/logo.png
+    background_color: "#F8FAFC"
+    theme_color: "#4C1D95"
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -63,6 +74,8 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+  assets:
+    - assets/logo.png
 
   # To add assets to your application, add an assets section, like this:
   # assets:

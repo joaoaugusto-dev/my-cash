@@ -2267,23 +2267,25 @@ class _AuthHeader extends StatelessWidget {
           width: 56,
           height: 56,
           decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [Color(0xFF4C1D95), Color(0xFF8B2CEB)],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
+            color: colorScheme.surface.withValues(alpha: 0.92),
             borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: colorScheme.outline.withValues(alpha: 0.5),
+            ),
             boxShadow: [
               BoxShadow(
-                color: const Color(0xFF4C1D95).withValues(alpha: 0.22),
+                color: colorScheme.primary.withValues(alpha: 0.16),
                 blurRadius: 18,
                 offset: const Offset(0, 10),
               ),
             ],
           ),
-          child: const Icon(
-            Icons.account_balance_wallet_rounded,
-            color: Colors.white,
+          child: Padding(
+            padding: const EdgeInsets.all(8),
+            child: Image.asset(
+              'assets/logo.png',
+              fit: BoxFit.contain,
+            ),
           ),
         ),
         const SizedBox(width: 14),
