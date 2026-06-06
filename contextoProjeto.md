@@ -1,4 +1,4 @@
-# Contexto do Projeto: PJ-FINANC
+# Contexto do Projeto: MyCash
 
 ## Visão Geral
 Aplicativo de controle financeiro inteligente, focado em facilidade de uso diário através de automação com Inteligência Artificial (LLM). O controle de fluxo principal será mensal, com uma visão alternativa anual.
