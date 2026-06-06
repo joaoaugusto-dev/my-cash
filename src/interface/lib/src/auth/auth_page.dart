@@ -604,6 +604,11 @@ class _AuthPageState extends State<AuthPage> {
                                               _verifySignUpToken();
                                             }
                                           },
+                                          onSubmit: () {
+                                            if (!_isLoading) {
+                                              _submitEmailAuth();
+                                            }
+                                          },
                                         )
                                       : _LoginFields(
                                           emailController: _emailController,
@@ -617,6 +622,7 @@ class _AuthPageState extends State<AuthPage> {
                                                   !_obscurePassword;
                                             });
                                           },
+                                          onSubmit: _submitEmailAuth,
                                         ),
                                 ),
                                 const SizedBox(height: 22),
@@ -663,7 +669,11 @@ class _AuthPageState extends State<AuthPage> {
                                     onPressed: _isLoading
                                         ? null
                                         : _signInWithGoogle,
-                                    icon: Icons.g_mobiledata_outlined,
+                                    icon: Image.network(
+                                      'https://developers.google.com/identity/images/g-logo.png',
+                                      width: 18,
+                                      height: 18,
+                                    ),
                                     label: 'Continuar com Google',
                                   ),
                                 ],
@@ -671,18 +681,9 @@ class _AuthPageState extends State<AuthPage> {
                                 AnimatedSwitcher(
                                   duration: const Duration(milliseconds: 260),
                                   child: _isSignUp && _signUpStep > 0
-                                      ? Tooltip(
-                                          message: 'Voltar',
-                                          child: TextButton(
-                                            key: ValueKey(
-                                              'toggle-$_isSignUp-$_signUpStep',
-                                            ),
-                                            onPressed: _isLoading
-                                                ? null
-                                                : _goBackSignUpStep,
-                                            child: const Icon(
-                                              Icons.arrow_back_rounded,
-                                            ),
+                                      ? SizedBox.shrink(
+                                          key: ValueKey(
+                                            'toggle-$_isSignUp-$_signUpStep',
                                           ),
                                         )
                                       : TextButton(
@@ -840,6 +841,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
   bool _isLoading = false;
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
+  bool _passwordUpdated = false;
 
   @override
   void initState() {
@@ -854,6 +856,10 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
     _tokenController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
+    
+    if (_step == 2 && !_passwordUpdated) {
+      Supabase.instance.client.auth.signOut();
+    }
     super.dispose();
   }
 
@@ -987,6 +993,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
       if (!mounted) {
         return;
       }
+      _passwordUpdated = true;
       _showMessage('Senha atualizada com sucesso.');
       Navigator.of(context).pop();
     } on AuthException catch (error) {
@@ -1129,6 +1136,12 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
                                         _verifyCode();
                                       }
                                     },
+                                    onSubmit: () {
+                                      if (!_isLoading) {
+                                        if (_step == 0) _sendCode();
+                                        else if (_step == 2) _updatePassword();
+                                      }
+                                    },
                                   ),
                                 ),
                                 const SizedBox(height: 22),
@@ -1197,6 +1210,7 @@ class _ForgotPasswordStep extends StatelessWidget {
     required this.onConfirmVisibility,
     required this.onPasswordChanged,
     required this.onTokenCompleted,
+    required this.onSubmit,
   });
 
   final int step;
@@ -1211,6 +1225,7 @@ class _ForgotPasswordStep extends StatelessWidget {
   final VoidCallback onConfirmVisibility;
   final ValueChanged<String> onPasswordChanged;
   final VoidCallback onTokenCompleted;
+  final VoidCallback onSubmit;
 
   @override
   Widget build(BuildContext context) {
@@ -1219,6 +1234,7 @@ class _ForgotPasswordStep extends StatelessWidget {
         controller: emailController,
         keyboardType: TextInputType.emailAddress,
         textInputAction: TextInputAction.done,
+        onFieldSubmitted: (_) => onSubmit(),
         enabled: !isLoading,
         decoration: const InputDecoration(
           labelText: 'E-mail',
@@ -1282,6 +1298,8 @@ class _ForgotPasswordStep extends StatelessWidget {
           controller: confirmPasswordController,
           obscureText: obscureConfirmPassword,
           enabled: !isLoading,
+          textInputAction: TextInputAction.done,
+          onFieldSubmitted: (_) => onSubmit(),
           decoration: InputDecoration(
             labelText: 'Confirmar nova senha',
             prefixIcon: const Icon(Icons.verified_user_rounded),
@@ -1315,6 +1333,7 @@ class _LoginFields extends StatelessWidget {
     required this.obscurePassword,
     required this.isLoading,
     required this.onPasswordVisibility,
+    required this.onSubmit,
   });
 
   final TextEditingController emailController;
@@ -1322,6 +1341,7 @@ class _LoginFields extends StatelessWidget {
   final bool obscurePassword;
   final bool isLoading;
   final VoidCallback onPasswordVisibility;
+  final VoidCallback onSubmit;
 
   @override
   Widget build(BuildContext context) {
@@ -1352,6 +1372,8 @@ class _LoginFields extends StatelessWidget {
           controller: passwordController,
           obscureText: obscurePassword,
           enabled: !isLoading,
+          textInputAction: TextInputAction.done,
+          onFieldSubmitted: (_) => onSubmit(),
           decoration: InputDecoration(
             labelText: 'Senha',
             prefixIcon: const Icon(Icons.lock_outline_rounded),
@@ -1400,6 +1422,7 @@ class _SignUpStepFields extends StatelessWidget {
     required this.onPasswordVisibility,
     required this.onConfirmVisibility,
     required this.onTokenCompleted,
+    required this.onSubmit,
   });
 
   final int step;
@@ -1419,6 +1442,7 @@ class _SignUpStepFields extends StatelessWidget {
   final VoidCallback onPasswordVisibility;
   final VoidCallback onConfirmVisibility;
   final VoidCallback onTokenCompleted;
+  final VoidCallback onSubmit;
 
   @override
   Widget build(BuildContext context) {
@@ -1454,6 +1478,7 @@ class _SignUpStepFields extends StatelessWidget {
             controller: emailController,
             keyboardType: TextInputType.emailAddress,
             textInputAction: TextInputAction.done,
+            onFieldSubmitted: (_) => onSubmit(),
             enabled: !isLoading,
             onChanged: (_) => onProfileChanged(),
             decoration: const InputDecoration(
@@ -1502,6 +1527,8 @@ class _SignUpStepFields extends StatelessWidget {
             controller: confirmPasswordController,
             obscureText: obscureConfirmPassword,
             enabled: !isLoading,
+            textInputAction: TextInputAction.done,
+            onFieldSubmitted: (_) => onSubmit(),
             decoration: InputDecoration(
               labelText: 'Confirmar senha',
               prefixIcon: const Icon(Icons.verified_user_rounded),
@@ -2375,7 +2402,7 @@ class _LoadingOutlinedButton extends StatelessWidget {
 
   final bool isLoading;
   final VoidCallback? onPressed;
-  final IconData icon;
+  final Widget icon;
   final String label;
 
   @override
@@ -2395,7 +2422,7 @@ class _LoadingOutlinedButton extends StatelessWidget {
                   height: 16,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
-              : Icon(icon, key: const ValueKey('icon')),
+              : KeyedSubtree(key: const ValueKey('icon'), child: icon),
         ),
         label: AnimatedSwitcher(
           duration: const Duration(milliseconds: 180),
