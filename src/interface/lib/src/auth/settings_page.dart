@@ -429,12 +429,18 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
+  Future<void> _signOut() async {
+    await Supabase.instance.client.auth.signOut();
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final currentMode = widget.themeController.themeMode;
     final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
+    final bottomOverlaySpacing =
+        bottomInset + MediaQuery.paddingOf(context).bottom + 176;
     final profileInitials = initialsFromProfile(
       fullName: _fullNameController.text,
       email: _emailController.text,
@@ -449,7 +455,7 @@ class _SettingsPageState extends State<SettingsPage> {
           SafeArea(
             child: ListView(
               physics: const BouncingScrollPhysics(),
-              padding: EdgeInsets.fromLTRB(20, 14, 20, bottomInset + 30),
+              padding: EdgeInsets.fromLTRB(20, 14, 20, bottomOverlaySpacing),
               children: [
                 _SettingsTopBar(onBack: () => Navigator.of(context).maybePop()),
                 const SizedBox(height: 16),
@@ -695,6 +701,34 @@ class _SettingsPageState extends State<SettingsPage> {
                           ),
                         ),
                       ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                _SettingsAnimatedSection(
+                  order: 2,
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 18,
+                          vertical: 16,
+                        ),
+                        backgroundColor: colorScheme.surface.withValues(
+                          alpha: isDark ? 0.7 : 0.84,
+                        ),
+                        foregroundColor: colorScheme.primary,
+                        side: BorderSide(
+                          color: colorScheme.outline.withValues(alpha: 0.5),
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(22),
+                        ),
+                      ),
+                      onPressed: _signOut,
+                      icon: const Icon(Icons.logout_rounded),
+                      label: const Text('Sair'),
                     ),
                   ),
                 ),

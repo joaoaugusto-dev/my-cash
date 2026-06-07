@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -213,10 +214,8 @@ class _HomePageState extends State<HomePage> {
     final created = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
-      showDragHandle: true,
-      backgroundColor: Theme.of(
-        context,
-      ).colorScheme.surface.withValues(alpha: 0.95),
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
       builder: (context) {
         return _TransactionComposerSheet(
           onSubmit: (transaction) async {
@@ -2171,36 +2170,419 @@ class _TransactionComposerSheet extends StatefulWidget {
 
 class _TransactionComposerSheetState extends State<_TransactionComposerSheet> {
   final _formKey = GlobalKey<FormState>();
-  final _titleController = TextEditingController();
+  final _descriptionController = TextEditingController();
   final _amountController = TextEditingController();
-  final _categoryController = TextEditingController(text: 'Alimentação');
-  final _notesController = TextEditingController();
-  final _sourceController = TextEditingController();
+  final _categoryController = TextEditingController();
+  final _paymentMethodController = TextEditingController();
+  final _cardController = TextEditingController();
   final _dateController = TextEditingController();
+  final _installmentsController = TextEditingController(text: '1');
+  final _customRecurrenceIntervalController = TextEditingController(text: '1');
+  final _amountFocusNode = FocusNode();
   FinancialTransactionType _type = FinancialTransactionType.expense;
+  _TransactionPaymentMethod? _paymentMethod;
+  _TransactionRecurrence _recurrence = _TransactionRecurrence.monthly;
+  _CustomRecurrenceUnit _customRecurrenceUnit = _CustomRecurrenceUnit.days;
   DateTime _occurredAt = DateTime.now();
+  bool _isRecurring = false;
+  bool _isInstallment = false;
   bool _isSaving = false;
 
   @override
   void initState() {
     super.initState();
     _syncDateText();
+    _amountFocusNode.addListener(_syncAmountCursorToEnd);
   }
+
+  List<_SheetOption<String>> get _categoryOptions {
+    if (_type == FinancialTransactionType.income) {
+      return const [
+        _SheetOption(
+          value: 'Salário',
+          label: 'Salário',
+          icon: Icons.work_rounded,
+        ),
+        _SheetOption(
+          value: 'Freelance',
+          label: 'Freelance',
+          icon: Icons.laptop_mac_rounded,
+        ),
+        _SheetOption(
+          value: 'Vendas',
+          label: 'Vendas',
+          icon: Icons.sell_rounded,
+        ),
+        _SheetOption(
+          value: 'Reembolso',
+          label: 'Reembolso',
+          icon: Icons.reply_all_rounded,
+        ),
+        _SheetOption(
+          value: 'Investimentos',
+          label: 'Investimentos',
+          icon: Icons.trending_up_rounded,
+        ),
+        _SheetOption(
+          value: 'Outros',
+          label: 'Outros',
+          icon: Icons.category_rounded,
+        ),
+      ];
+    }
+
+    return const [
+      _SheetOption(
+        value: 'Alimentação',
+        label: 'Alimentação',
+        icon: Icons.restaurant_rounded,
+      ),
+      _SheetOption(
+        value: 'Moradia',
+        label: 'Moradia',
+        icon: Icons.home_rounded,
+      ),
+      _SheetOption(
+        value: 'Transporte',
+        label: 'Transporte',
+        icon: Icons.directions_car_filled_rounded,
+      ),
+      _SheetOption(
+        value: 'Saúde',
+        label: 'Saúde',
+        icon: Icons.favorite_rounded,
+      ),
+      _SheetOption(
+        value: 'Educação',
+        label: 'Educação',
+        icon: Icons.school_rounded,
+      ),
+      _SheetOption(value: 'Lazer', label: 'Lazer', icon: Icons.movie_rounded),
+      _SheetOption(
+        value: 'Assinaturas',
+        label: 'Assinaturas',
+        icon: Icons.subscriptions_rounded,
+      ),
+      _SheetOption(
+        value: 'Compras',
+        label: 'Compras',
+        icon: Icons.shopping_bag_rounded,
+      ),
+      _SheetOption(
+        value: 'Outros',
+        label: 'Outros',
+        icon: Icons.category_rounded,
+      ),
+    ];
+  }
+
+  List<_SheetOption<_TransactionPaymentMethod>> get _paymentOptions => const [
+    _SheetOption(
+      value: _TransactionPaymentMethod.pix,
+      label: 'Pix',
+      icon: Icons.bolt_rounded,
+    ),
+    _SheetOption(
+      value: _TransactionPaymentMethod.debit,
+      label: 'Débito',
+      icon: Icons.credit_card_rounded,
+    ),
+    _SheetOption(
+      value: _TransactionPaymentMethod.credit,
+      label: 'Cartão',
+      icon: Icons.credit_card_rounded,
+    ),
+    _SheetOption(
+      value: _TransactionPaymentMethod.cash,
+      label: 'Dinheiro',
+      icon: Icons.payments_rounded,
+    ),
+    _SheetOption(
+      value: _TransactionPaymentMethod.transfer,
+      label: 'Transferência',
+      icon: Icons.compare_arrows_rounded,
+    ),
+    _SheetOption(
+      value: _TransactionPaymentMethod.boleto,
+      label: 'Boleto',
+      icon: Icons.receipt_long_rounded,
+    ),
+  ];
+
+  List<_SheetOption<String>> get _cardOptions => const [
+    _SheetOption(
+      value: 'Nubank',
+      label: 'Nubank',
+      icon: Icons.credit_card_rounded,
+    ),
+    _SheetOption(
+      value: 'Inter',
+      label: 'Inter',
+      icon: Icons.credit_card_rounded,
+    ),
+    _SheetOption(value: 'Itaú', label: 'Itaú', icon: Icons.credit_card_rounded),
+    _SheetOption(
+      value: 'Santander',
+      label: 'Santander',
+      icon: Icons.credit_card_rounded,
+    ),
+    _SheetOption(
+      value: 'Outro',
+      label: 'Outro cartão',
+      icon: Icons.credit_card_rounded,
+    ),
+  ];
 
   void _syncDateText() {
     _dateController.text =
         '${_occurredAt.day.toString().padLeft(2, '0')}/${_occurredAt.month.toString().padLeft(2, '0')}/${_occurredAt.year}';
   }
 
+  bool get _isCardPayment => _paymentMethod == _TransactionPaymentMethod.credit;
+
+  void _syncAmountCursorToEnd() {
+    if (!_amountFocusNode.hasFocus) {
+      return;
+    }
+
+    final text = _amountController.text;
+    _amountController.selection = TextSelection.collapsed(offset: text.length);
+  }
+
   @override
   void dispose() {
-    _titleController.dispose();
+    _descriptionController.dispose();
     _amountController.dispose();
+    _amountFocusNode
+      ..removeListener(_syncAmountCursorToEnd)
+      ..dispose();
     _categoryController.dispose();
-    _notesController.dispose();
-    _sourceController.dispose();
+    _paymentMethodController.dispose();
+    _cardController.dispose();
     _dateController.dispose();
+    _installmentsController.dispose();
+    _customRecurrenceIntervalController.dispose();
     super.dispose();
+  }
+
+  Future<void> _pickCategory() async {
+    final selected = await _showOptionsSheet<String>(
+      title: 'Categoria',
+      options: _categoryOptions,
+      selectedValue: _categoryController.text.trim(),
+    );
+    if (selected == null || !mounted) {
+      return;
+    }
+    setState(() {
+      _categoryController.text = selected.value;
+    });
+  }
+
+  Future<void> _pickPaymentMethod() async {
+    final selected = await _showOptionsSheet<_TransactionPaymentMethod>(
+      title: 'Forma de pagamento',
+      options: _paymentOptions,
+      selectedValue: _paymentMethod,
+    );
+    if (selected == null || !mounted) {
+      return;
+    }
+
+    setState(() {
+      _paymentMethod = selected.value;
+      _paymentMethodController.text = selected.label;
+      if (!_isCardPayment) {
+        _cardController.clear();
+        _isInstallment = false;
+        _installmentsController.text = '1';
+      }
+    });
+  }
+
+  Future<void> _pickCard() async {
+    final selected = await _showOptionsSheet<String>(
+      title: 'Cartão',
+      options: _cardOptions,
+      selectedValue: _cardController.text.trim(),
+    );
+    if (selected == null || !mounted) {
+      return;
+    }
+    setState(() {
+      _cardController.text = selected.value;
+    });
+  }
+
+  Future<_SheetOption<T>?> _showOptionsSheet<T>({
+    required String title,
+    required List<_SheetOption<T>> options,
+    required T? selectedValue,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return showModalBottomSheet<_SheetOption<T>>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        final screenHeight = MediaQuery.sizeOf(context).height;
+        return ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: screenHeight * 0.72),
+          child: ClipRRect(
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
+            child: BackdropFilter(
+              filter: ui.ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: colorScheme.surface.withValues(
+                    alpha: isDark ? 0.92 : 0.9,
+                  ),
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(30),
+                  ),
+                  border: Border.all(
+                    color: colorScheme.outline.withValues(alpha: 0.4),
+                  ),
+                ),
+                child: SafeArea(
+                  top: false,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Center(
+                          child: Container(
+                            width: 42,
+                            height: 5,
+                            decoration: BoxDecoration(
+                              color: colorScheme.outline.withValues(alpha: 0.4),
+                              borderRadius: BorderRadius.circular(99),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 18),
+                        Text(
+                          title,
+                          style: Theme.of(context).textTheme.titleLarge
+                              ?.copyWith(fontWeight: FontWeight.w900),
+                        ),
+                        const SizedBox(height: 12),
+                        Expanded(
+                          child: ListView.separated(
+                            physics: const BouncingScrollPhysics(),
+                            itemCount: options.length,
+                            separatorBuilder: (_, _) =>
+                                const SizedBox(height: 4),
+                            itemBuilder: (context, index) {
+                              final option = options[index];
+                              return ListTile(
+                                dense: true,
+                                visualDensity: VisualDensity.compact,
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                  vertical: 2,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                leading: CircleAvatar(
+                                  radius: 18,
+                                  backgroundColor: colorScheme.primary
+                                      .withValues(alpha: 0.12),
+                                  child: Icon(
+                                    option.icon,
+                                    size: 18,
+                                    color: colorScheme.primary,
+                                  ),
+                                ),
+                                title: Text(
+                                  option.label,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: Theme.of(context).textTheme.titleMedium
+                                      ?.copyWith(fontWeight: FontWeight.w800),
+                                ),
+                                trailing: option.value == selectedValue
+                                    ? Icon(
+                                        Icons.check_circle_rounded,
+                                        color: colorScheme.primary,
+                                      )
+                                    : null,
+                                onTap: () => Navigator.of(context).pop(option),
+                              );
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _pickDate() async {
+    final selected = await showDatePicker(
+      context: context,
+      initialDate: _occurredAt,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2100),
+    );
+
+    if (selected == null || !mounted) {
+      return;
+    }
+
+    setState(() {
+      _occurredAt = selected;
+      _syncDateText();
+    });
+  }
+
+  String _buildSource() {
+    if (_paymentMethod == null) {
+      return '';
+    }
+
+    final paymentLabel = _paymentOptions
+        .firstWhere((option) => option.value == _paymentMethod)
+        .label;
+    if (_isCardPayment && _cardController.text.trim().isNotEmpty) {
+      return '$paymentLabel • ${_cardController.text.trim()}';
+    }
+    return paymentLabel;
+  }
+
+  String _buildNotes() {
+    final details = <String>[];
+    if (_isCardPayment && _isInstallment) {
+      details.add('Parcelado em ${_installmentsController.text.trim()}x');
+    }
+    if (_isRecurring) {
+      if (_recurrence == _TransactionRecurrence.custom) {
+        details.add(
+          'Recorrência a cada ${_customRecurrenceIntervalController.text.trim()} ${_customRecurrenceUnit.label.toLowerCase()}',
+        );
+      } else {
+        details.add('Recorrência ${_recurrence.label.toLowerCase()}');
+      }
+    }
+    return details.join(' • ');
+  }
+
+  double _parseAmountValue() {
+    final digits = _amountController.text.replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.isEmpty) {
+      return 0;
+    }
+    return int.parse(digits) / 100;
   }
 
   Future<void> _save() async {
@@ -2216,17 +2598,13 @@ class _TransactionComposerSheetState extends State<_TransactionComposerSheet> {
       final transaction = FinancialTransaction(
         id: 'pending',
         userId: 'pending',
-        title: _titleController.text.trim(),
-        amount: double.parse(_amountController.text.replaceAll(',', '.')),
+        title: _descriptionController.text.trim(),
+        amount: _parseAmountValue(),
         type: _type,
         category: _categoryController.text.trim(),
         occurredAt: _occurredAt.toUtc().toIso8601String(),
-        notes: _notesController.text.trim().isEmpty
-            ? null
-            : _notesController.text.trim(),
-        source: _sourceController.text.trim().isEmpty
-            ? null
-            : _sourceController.text.trim(),
+        notes: _buildNotes().isEmpty ? null : _buildNotes(),
+        source: _buildSource().isEmpty ? null : _buildSource(),
         createdAt: DateTime.now().toUtc().toIso8601String(),
         updatedAt: DateTime.now().toUtc().toIso8601String(),
       );
@@ -2253,158 +2631,962 @@ class _TransactionComposerSheetState extends State<_TransactionComposerSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final bottomInset = MediaQuery.of(context).viewInsets.bottom;
 
     return Padding(
       padding: EdgeInsets.only(bottom: bottomInset),
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                children: [
-                  IconButton(
-                    tooltip: 'Voltar',
-                    onPressed: () => Navigator.of(context).pop(false),
-                    icon: const Icon(Icons.arrow_back_rounded),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Novo lançamento',
-                      style: Theme.of(context).textTheme.headlineSmall
-                          ?.copyWith(fontWeight: FontWeight.w800),
-                    ),
-                  ),
-                ],
+      child: ClipRRect(
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(34)),
+        child: BackdropFilter(
+          filter: ui.ImageFilter.blur(sigmaX: 22, sigmaY: 22),
+          child: Container(
+            decoration: BoxDecoration(
+              color: colorScheme.surface.withValues(
+                alpha: isDark ? 0.86 : 0.82,
               ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _titleController,
-                decoration: const InputDecoration(
-                  labelText: 'Título',
-                  border: OutlineInputBorder(),
-                ),
-                validator: (value) {
-                  if ((value ?? '').trim().isEmpty) {
-                    return 'Informe um título';
-                  }
-                  return null;
-                },
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(34),
               ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _amountController,
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
+              border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: isDark ? 0.24 : 0.08),
+                  blurRadius: 30,
+                  offset: const Offset(0, -10),
                 ),
-                decoration: const InputDecoration(
-                  labelText: 'Valor',
-                  border: OutlineInputBorder(),
-                  prefixText: 'R\$ ',
-                ),
-                validator: (value) {
-                  final parsed = double.tryParse(
-                    (value ?? '').replaceAll(',', '.'),
-                  );
-                  if (parsed == null || parsed <= 0) {
-                    return 'Informe um valor válido';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<FinancialTransactionType>(
-                initialValue: _type,
-                decoration: const InputDecoration(
-                  labelText: 'Tipo',
-                  border: OutlineInputBorder(),
-                ),
-                items: const [
-                  DropdownMenuItem(
-                    value: FinancialTransactionType.income,
-                    child: Text('Entrada'),
-                  ),
-                  DropdownMenuItem(
-                    value: FinancialTransactionType.expense,
-                    child: Text('Saída'),
-                  ),
-                ],
-                onChanged: (value) {
-                  if (value != null) {
-                    setState(() {
-                      _type = value;
-                    });
-                  }
-                },
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _categoryController,
-                decoration: const InputDecoration(
-                  labelText: 'Categoria',
-                  border: OutlineInputBorder(),
-                ),
-                validator: (value) {
-                  if ((value ?? '').trim().isEmpty) {
-                    return 'Informe uma categoria';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _dateController,
-                readOnly: true,
-                decoration: InputDecoration(
-                  labelText: 'Data',
-                  border: const OutlineInputBorder(),
-                  suffixIcon: IconButton(
-                    onPressed: () async {
-                      final selected = await showDatePicker(
-                        context: context,
-                        initialDate: _occurredAt,
-                        firstDate: DateTime(2020),
-                        lastDate: DateTime(2100),
-                      );
+              ],
+            ),
+            child: SafeArea(
+              top: false,
+              child: SingleChildScrollView(
+                physics: const BouncingScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 26),
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Center(
+                        child: Container(
+                          width: 44,
+                          height: 5,
+                          decoration: BoxDecoration(
+                            color: colorScheme.outline.withValues(alpha: 0.4),
+                            borderRadius: BorderRadius.circular(99),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Nova transação',
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .headlineSmall
+                                      ?.copyWith(fontWeight: FontWeight.w900),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  'Rápido, limpo e no estilo do app.',
+                                  style: Theme.of(context).textTheme.bodyMedium
+                                      ?.copyWith(
+                                        color: colorScheme.onSurface.withValues(
+                                          alpha: 0.62,
+                                        ),
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          _ComposerCloseButton(
+                            onPressed: () => Navigator.of(context).pop(false),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 18),
+                      _ComposerTypeSwitcher(
+                        type: _type,
+                        onChanged: (type) {
+                          setState(() {
+                            _type = type;
+                            if (!_categoryOptions.any(
+                              (option) =>
+                                  option.value ==
+                                  _categoryController.text.trim(),
+                            )) {
+                              _categoryController.clear();
+                            }
+                          });
+                        },
+                      ),
+                      const SizedBox(height: 16),
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 4),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                Text(
+                                  'R\$',
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .headlineMedium
+                                      ?.copyWith(
+                                        color: colorScheme.onSurface,
+                                        fontWeight: FontWeight.w900,
+                                        letterSpacing: -0.8,
+                                      ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: TextFormField(
+                                    controller: _amountController,
+                                    focusNode: _amountFocusNode,
+                                    keyboardType: TextInputType.number,
+                                    inputFormatters: [
+                                      _CurrencyInputFormatter(),
+                                    ],
+                                    onTap: _syncAmountCursorToEnd,
+                                    textAlign: TextAlign.left,
+                                    textAlignVertical: TextAlignVertical.center,
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .headlineMedium
+                                        ?.copyWith(
+                                          color: colorScheme.onSurface,
+                                          fontWeight: FontWeight.w900,
+                                          letterSpacing: -0.8,
+                                        ),
+                                    decoration: const InputDecoration(
+                                      hintText: '0,00',
+                                      border: InputBorder.none,
+                                      enabledBorder: InputBorder.none,
+                                      focusedBorder: InputBorder.none,
+                                      errorBorder: InputBorder.none,
+                                      focusedErrorBorder: InputBorder.none,
+                                      disabledBorder: InputBorder.none,
+                                      filled: false,
+                                      isDense: true,
+                                      isCollapsed: true,
+                                      contentPadding: EdgeInsets.zero,
+                                    ),
+                                    validator: (value) {
+                                      if (_parseAmountValue() <= 0) {
+                                        return 'Informe um valor válido';
+                                      }
+                                      return null;
+                                    },
+                                  ),
+                                ),
+                                const SizedBox(width: 4),
+                                Icon(
+                                  Icons.calculate_rounded,
+                                  size: 20,
+                                  color: colorScheme.primary,
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 10),
+                            Container(
+                              height: 1,
+                              color: colorScheme.outline.withValues(
+                                alpha: 0.45,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      LayoutBuilder(
+                        builder: (context, constraints) {
+                          final isCompact = constraints.maxWidth < 430;
+                          final categoryField = _ComposerSelectorField(
+                            controller: _categoryController,
+                            label: 'Categoria',
+                            hint: 'Selecione',
+                            icon: Icons.sell_rounded,
+                            onTap: _pickCategory,
+                            validator: (value) {
+                              if ((value ?? '').trim().isEmpty) {
+                                return 'Escolha a categoria';
+                              }
+                              return null;
+                            },
+                          );
+                          final paymentField = _ComposerSelectorField(
+                            controller: _paymentMethodController,
+                            label: 'Pagamento',
+                            hint: 'Selecione',
+                            icon: Icons.account_balance_wallet_rounded,
+                            onTap: _pickPaymentMethod,
+                            validator: (value) {
+                              if ((value ?? '').trim().isEmpty) {
+                                return 'Escolha a forma';
+                              }
+                              return null;
+                            },
+                          );
 
-                      if (selected != null) {
-                        setState(() {
-                          _occurredAt = selected;
-                          _syncDateText();
-                        });
-                      }
-                    },
-                    icon: const Icon(Icons.calendar_month_rounded),
+                          if (isCompact) {
+                            return Column(
+                              children: [
+                                categoryField,
+                                const SizedBox(height: 12),
+                                paymentField,
+                              ],
+                            );
+                          }
+
+                          return Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(child: categoryField),
+                              const SizedBox(width: 12),
+                              Expanded(child: paymentField),
+                            ],
+                          );
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      _ComposerSelectorField(
+                        controller: _dateController,
+                        label: 'Data',
+                        hint: 'Selecione',
+                        icon: Icons.calendar_month_rounded,
+                        onTap: _pickDate,
+                        trailingIcon: Icons.event_available_rounded,
+                      ),
+                      const SizedBox(height: 12),
+                      AnimatedSize(
+                        duration: const Duration(milliseconds: 220),
+                        curve: Curves.easeOutCubic,
+                        child: _isCardPayment
+                            ? _ComposerPanel(
+                                child: Column(
+                                  children: [
+                                    _ComposerSelectorField(
+                                      controller: _cardController,
+                                      label: 'Cartão',
+                                      hint: 'Selecione o cartão',
+                                      icon: Icons.credit_card_rounded,
+                                      onTap: _pickCard,
+                                      validator: (value) {
+                                        if (_isCardPayment &&
+                                            (value ?? '').trim().isEmpty) {
+                                          return 'Escolha o cartão';
+                                        }
+                                        return null;
+                                      },
+                                    ),
+                                    const SizedBox(height: 12),
+                                    _ComposerSwitchTile(
+                                      title: 'Parcelado',
+                                      subtitle:
+                                          'Ative para informar as parcelas.',
+                                      value: _isInstallment,
+                                      onChanged: (value) {
+                                        setState(() {
+                                          _isInstallment = value;
+                                          if (!_isInstallment) {
+                                            _installmentsController.text = '1';
+                                          }
+                                        });
+                                      },
+                                    ),
+                                    AnimatedSize(
+                                      duration: const Duration(
+                                        milliseconds: 200,
+                                      ),
+                                      curve: Curves.easeOutCubic,
+                                      child: _isInstallment
+                                          ? Padding(
+                                              padding: const EdgeInsets.only(
+                                                top: 12,
+                                              ),
+                                              child: TextFormField(
+                                                controller:
+                                                    _installmentsController,
+                                                keyboardType:
+                                                    TextInputType.number,
+                                                inputFormatters: [
+                                                  FilteringTextInputFormatter
+                                                      .digitsOnly,
+                                                ],
+                                                decoration:
+                                                    const InputDecoration(
+                                                      labelText:
+                                                          'Número de parcelas',
+                                                    ),
+                                                validator: (value) {
+                                                  if (!_isInstallment) {
+                                                    return null;
+                                                  }
+                                                  final parsed = int.tryParse(
+                                                    value ?? '',
+                                                  );
+                                                  if (parsed == null ||
+                                                      parsed < 2) {
+                                                    return 'Digite um número válido';
+                                                  }
+                                                  return null;
+                                                },
+                                              ),
+                                            )
+                                          : const SizedBox.shrink(),
+                                    ),
+                                  ],
+                                ),
+                              )
+                            : const SizedBox.shrink(),
+                      ),
+                      const SizedBox(height: 12),
+                      _ComposerPanel(
+                        child: Column(
+                          children: [
+                            _ComposerSwitchTile(
+                              title: 'Recorrente',
+                              subtitle:
+                                  'Repete automaticamente esse lançamento.',
+                              value: _isRecurring,
+                              activeColor: colorScheme.primary,
+                              onChanged: (value) {
+                                setState(() {
+                                  _isRecurring = value;
+                                });
+                              },
+                            ),
+                            AnimatedSize(
+                              duration: const Duration(milliseconds: 200),
+                              curve: Curves.easeOutCubic,
+                              child: _isRecurring
+                                  ? Padding(
+                                      padding: const EdgeInsets.only(top: 14),
+                                      child: _ComposerRecurrenceRow(
+                                        recurrence: _recurrence,
+                                        onChanged: (value) {
+                                          setState(() {
+                                            _recurrence = value;
+                                          });
+                                        },
+                                      ),
+                                    )
+                                  : const SizedBox.shrink(),
+                            ),
+                            AnimatedSize(
+                              duration: const Duration(milliseconds: 200),
+                              curve: Curves.easeOutCubic,
+                              child:
+                                  _isRecurring &&
+                                      _recurrence ==
+                                          _TransactionRecurrence.custom
+                                  ? Padding(
+                                      padding: const EdgeInsets.only(top: 12),
+                                      child: LayoutBuilder(
+                                        builder: (context, constraints) {
+                                          final intervalField = TextFormField(
+                                            controller:
+                                                _customRecurrenceIntervalController,
+                                            keyboardType: TextInputType.number,
+                                            inputFormatters: [
+                                              FilteringTextInputFormatter
+                                                  .digitsOnly,
+                                            ],
+                                            decoration: const InputDecoration(
+                                              labelText: 'A cada',
+                                              hintText: '1',
+                                            ),
+                                            validator: (value) {
+                                              if (!_isRecurring ||
+                                                  _recurrence !=
+                                                      _TransactionRecurrence
+                                                          .custom) {
+                                                return null;
+                                              }
+                                              final parsed = int.tryParse(
+                                                value ?? '',
+                                              );
+                                              if (parsed == null ||
+                                                  parsed < 1) {
+                                                return 'Digite um intervalo';
+                                              }
+                                              return null;
+                                            },
+                                          );
+                                          final unitField =
+                                              _ComposerCustomUnitRow(
+                                                unit: _customRecurrenceUnit,
+                                                onChanged: (value) {
+                                                  setState(() {
+                                                    _customRecurrenceUnit =
+                                                        value;
+                                                  });
+                                                },
+                                              );
+
+                                          if (constraints.maxWidth < 430) {
+                                            return Column(
+                                              children: [
+                                                intervalField,
+                                                const SizedBox(height: 12),
+                                                unitField,
+                                              ],
+                                            );
+                                          }
+
+                                          return Row(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Expanded(child: intervalField),
+                                              const SizedBox(width: 12),
+                                              Expanded(child: unitField),
+                                            ],
+                                          );
+                                        },
+                                      ),
+                                    )
+                                  : const SizedBox.shrink(),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      _ComposerPanel(
+                        child: TextFormField(
+                          controller: _descriptionController,
+                          maxLines: 2,
+                          textCapitalization: TextCapitalization.sentences,
+                          decoration: const InputDecoration(
+                            labelText: 'Descrição',
+                            hintText:
+                                'Ex.: mercado, aluguel, cliente, serviço...',
+                            border: InputBorder.none,
+                          ),
+                          validator: (value) {
+                            if ((value ?? '').trim().isEmpty) {
+                              return 'Informe a descrição';
+                            }
+                            return null;
+                          },
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      FilledButton.icon(
+                        onPressed: _isSaving ? null : _save,
+                        icon: AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 180),
+                          child: _isSaving
+                              ? const SizedBox(
+                                  key: ValueKey('saving'),
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(
+                                  Icons.check_rounded,
+                                  key: ValueKey('save'),
+                                ),
+                        ),
+                        label: Text(
+                          _isSaving ? 'Salvando...' : 'Salvar transação',
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _notesController,
-                maxLines: 2,
-                decoration: const InputDecoration(
-                  labelText: 'Observações',
-                  border: OutlineInputBorder(),
-                ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+enum _TransactionPaymentMethod { pix, debit, credit, cash, transfer, boleto }
+
+enum _TransactionRecurrence {
+  weekly('Semanal'),
+  monthly('Mensal'),
+  yearly('Anual'),
+  custom('Personalizado');
+
+  const _TransactionRecurrence(this.label);
+
+  final String label;
+}
+
+enum _CustomRecurrenceUnit {
+  days('Dias'),
+  months('Meses'),
+  years('Anos');
+
+  const _CustomRecurrenceUnit(this.label);
+
+  final String label;
+}
+
+class _SheetOption<T> {
+  const _SheetOption({
+    required this.value,
+    required this.label,
+    required this.icon,
+  });
+
+  final T value;
+  final String label;
+  final IconData icon;
+}
+
+class _ComposerPanel extends StatelessWidget {
+  const _ComposerPanel({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: colorScheme.surface.withValues(alpha: 0.7),
+        borderRadius: BorderRadius.circular(26),
+        border: Border.all(color: colorScheme.outline.withValues(alpha: 0.45)),
+      ),
+      child: child,
+    );
+  }
+}
+
+class _ComposerTypeSwitcher extends StatelessWidget {
+  const _ComposerTypeSwitcher({required this.type, required this.onChanged});
+
+  final FinancialTransactionType type;
+  final ValueChanged<FinancialTransactionType> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final isIncome = type == FinancialTransactionType.income;
+
+    return Row(
+      children: [
+        Expanded(
+          child: _ComposerTypeButton(
+            label: 'Receita',
+            icon: Icons.arrow_upward_rounded,
+            selected: isIncome,
+            accentColor: const Color(0xFF16A34A),
+            onTap: () => onChanged(FinancialTransactionType.income),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: _ComposerTypeButton(
+            label: 'Despesa',
+            icon: Icons.arrow_downward_rounded,
+            selected: !isIncome,
+            accentColor: const Color(0xFFEF4444),
+            onTap: () => onChanged(FinancialTransactionType.expense),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ComposerTypeButton extends StatelessWidget {
+  const _ComposerTypeButton({
+    required this.label,
+    required this.icon,
+    required this.selected,
+    required this.accentColor,
+    required this.onTap,
+  });
+
+  final String label;
+  final IconData icon;
+  final bool selected;
+  final Color accentColor;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(22),
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOutCubic,
+        height: 58,
+        decoration: BoxDecoration(
+          color: selected
+              ? accentColor.withValues(alpha: 0.1)
+              : colorScheme.surface.withValues(alpha: 0.55),
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(
+            color: selected
+                ? accentColor.withValues(alpha: 0.9)
+                : colorScheme.outline.withValues(alpha: 0.42),
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, color: selected ? accentColor : colorScheme.onSurface),
+            const SizedBox(width: 10),
+            Text(
+              label,
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                color: selected ? accentColor : colorScheme.onSurface,
+                fontWeight: FontWeight.w800,
               ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _sourceController,
-                decoration: const InputDecoration(
-                  labelText: 'Origem',
-                  border: OutlineInputBorder(),
-                ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ComposerSelectorField extends StatelessWidget {
+  const _ComposerSelectorField({
+    required this.controller,
+    required this.label,
+    required this.hint,
+    required this.icon,
+    required this.onTap,
+    this.trailingIcon = Icons.keyboard_arrow_down_rounded,
+    this.validator,
+  });
+
+  final TextEditingController controller;
+  final String label;
+  final String hint;
+  final IconData icon;
+  final IconData trailingIcon;
+  final VoidCallback onTap;
+  final String? Function(String?)? validator;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return TextFormField(
+      controller: controller,
+      readOnly: true,
+      onTap: onTap,
+      maxLines: 1,
+      validator: validator,
+      decoration: InputDecoration(
+        labelText: label,
+        hintText: hint,
+        prefixIcon: Icon(icon, color: colorScheme.primary),
+        suffixIcon: Icon(trailingIcon),
+      ),
+    );
+  }
+}
+
+class _ComposerSwitchTile extends StatelessWidget {
+  const _ComposerSwitchTile({
+    required this.title,
+    required this.subtitle,
+    required this.value,
+    required this.onChanged,
+    this.activeColor,
+  });
+
+  final String title;
+  final String subtitle;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+  final Color? activeColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
               ),
-              const SizedBox(height: 20),
-              FilledButton(
-                onPressed: _isSaving ? null : _save,
-                child: Text(_isSaving ? 'Salvando...' : 'Salvar lançamento'),
+              const SizedBox(height: 4),
+              Text(
+                subtitle,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: colorScheme.onSurface.withValues(alpha: 0.6),
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ],
+          ),
+        ),
+        Switch(
+          value: value,
+          onChanged: onChanged,
+          activeThumbColor: activeColor ?? colorScheme.tertiary,
+          activeTrackColor: (activeColor ?? colorScheme.tertiary).withValues(
+            alpha: 0.45,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ComposerCloseButton extends StatelessWidget {
+  const _ComposerCloseButton({required this.onPressed});
+
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Tooltip(
+      message: 'Fechar',
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: onPressed,
+        child: Container(
+          width: 46,
+          height: 46,
+          decoration: BoxDecoration(
+            color: colorScheme.surface.withValues(alpha: 0.78),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: colorScheme.outline.withValues(alpha: 0.5),
+            ),
+          ),
+          child: Icon(Icons.close_rounded, color: colorScheme.primary),
+        ),
+      ),
+    );
+  }
+}
+
+class _ComposerRecurrenceRow extends StatelessWidget {
+  const _ComposerRecurrenceRow({
+    required this.recurrence,
+    required this.onChanged,
+  });
+
+  final _TransactionRecurrence recurrence;
+  final ValueChanged<_TransactionRecurrence> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final options = _TransactionRecurrence.values;
+        final isCompact = constraints.maxWidth < 430;
+
+        if (isCompact) {
+          return Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final option in options)
+                SizedBox(
+                  width: (constraints.maxWidth - 8) / 2,
+                  child: _ComposerRecurrenceButton(
+                    label: option.label,
+                    selected: option == recurrence,
+                    onTap: () => onChanged(option),
+                  ),
+                ),
+            ],
+          );
+        }
+
+        return Row(
+          children: [
+            for (final option in options) ...[
+              Expanded(
+                child: _ComposerRecurrenceButton(
+                  label: option.label,
+                  selected: option == recurrence,
+                  onTap: () => onChanged(option),
+                ),
+              ),
+              if (option != options.last) const SizedBox(width: 8),
+            ],
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _ComposerCustomUnitRow extends StatelessWidget {
+  const _ComposerCustomUnitRow({required this.unit, required this.onChanged});
+
+  final _CustomRecurrenceUnit unit;
+  final ValueChanged<_CustomRecurrenceUnit> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return InputDecorator(
+      decoration: const InputDecoration(labelText: 'Unidade'),
+      child: Row(
+        children: [
+          for (final option in _CustomRecurrenceUnit.values) ...[
+            Expanded(
+              child: _ComposerMiniChoiceButton(
+                label: option.label,
+                selected: unit == option,
+                onTap: () => onChanged(option),
+              ),
+            ),
+            if (option != _CustomRecurrenceUnit.values.last)
+              const SizedBox(width: 8),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _ComposerMiniChoiceButton extends StatelessWidget {
+  const _ComposerMiniChoiceButton({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        height: 42,
+        decoration: BoxDecoration(
+          color: selected
+              ? colorScheme.primary.withValues(alpha: 0.12)
+              : colorScheme.surface.withValues(alpha: 0.42),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: selected
+                ? colorScheme.primary.withValues(alpha: 0.6)
+                : colorScheme.outline.withValues(alpha: 0.35),
+          ),
+        ),
+        child: Center(
+          child: Text(
+            label,
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.labelLarge?.copyWith(
+              color: selected ? colorScheme.primary : colorScheme.onSurface,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CurrencyInputFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    final digits = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.isEmpty) {
+      return const TextEditingValue(text: '');
+    }
+
+    final value = int.parse(digits);
+    final cents = (value % 100).toString().padLeft(2, '0');
+    final whole = (value ~/ 100).toString();
+    final groups = <String>[];
+    for (var i = whole.length; i > 0; i -= 3) {
+      final start = math.max(0, i - 3);
+      groups.insert(0, whole.substring(start, i));
+    }
+    final formatted = '${groups.join('.')},$cents';
+    return TextEditingValue(
+      text: formatted,
+      selection: TextSelection.collapsed(offset: formatted.length),
+    );
+  }
+}
+
+class _ComposerRecurrenceButton extends StatelessWidget {
+  const _ComposerRecurrenceButton({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(18),
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOutCubic,
+        height: 48,
+        decoration: BoxDecoration(
+          gradient: selected
+              ? const LinearGradient(
+                  colors: [Color(0xFF6D28D9), Color(0xFF8B2CEB)],
+                )
+              : null,
+          color: selected ? null : colorScheme.surface.withValues(alpha: 0.65),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: selected
+                ? Colors.white.withValues(alpha: 0.18)
+                : colorScheme.outline.withValues(alpha: 0.45),
+          ),
+        ),
+        child: Center(
+          child: Text(
+            label,
+            style: Theme.of(context).textTheme.labelLarge?.copyWith(
+              color: selected ? Colors.white : colorScheme.onSurface,
+              fontWeight: FontWeight.w800,
+            ),
           ),
         ),
       ),
