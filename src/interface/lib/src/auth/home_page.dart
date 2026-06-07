@@ -11,6 +11,7 @@ import '../finance/transactions_api_service.dart';
 import '../theme/app_theme_controller.dart';
 import '../widgets/finance_stat_card.dart';
 import 'profile_helpers.dart';
+import 'session_access_token_provider.dart';
 import 'settings_page.dart';
 
 class HomePage extends StatefulWidget {
@@ -31,6 +32,7 @@ class _HomePageState extends State<HomePage> {
   static const String _avatarBucket = 'avatars';
 
   late final TransactionsApiService _apiService;
+  late final SessionAccessTokenProvider _accessTokenProvider;
   late final Future<SharedPreferences> _preferencesFuture;
   Future<FinancialDashboard>? _dashboardFuture;
   String _resolvedAvatarUrl = '';
@@ -44,9 +46,14 @@ class _HomePageState extends State<HomePage> {
     super.initState();
     _pageController = PageController(initialPage: _selectedNavIndex);
     _preferencesFuture = SharedPreferences.getInstance();
+    final auth = Supabase.instance.client.auth;
+    _accessTokenProvider = SessionAccessTokenProvider(
+      currentSessionProvider: () => auth.currentSession,
+      refreshSession: auth.refreshSession,
+    );
     _apiService = TransactionsApiService(
       apiBaseUrl: AppEnv.apiBaseUrl,
-      accessTokenProvider: _currentAccessToken,
+      accessTokenProvider: _accessTokenProvider.call,
     );
     _dashboardFuture = _loadDashboard();
     _refreshResolvedAvatarUrl();
@@ -54,15 +61,6 @@ class _HomePageState extends State<HomePage> {
 
   Future<FinancialDashboard> _loadDashboard() {
     return _apiService.fetchDashboard();
-  }
-
-  String _currentAccessToken() {
-    final session = Supabase.instance.client.auth.currentSession;
-    if (session == null) {
-      throw StateError('Sessão expirada. Faça login novamente.');
-    }
-
-    return session.accessToken;
   }
 
   void _refreshDashboard() {
@@ -418,188 +416,208 @@ class _HomePageState extends State<HomePage> {
             children: [
               RefreshIndicator(
                 onRefresh: () async => _refreshDashboard(),
-            color: colorScheme.secondary,
-            child: FutureBuilder<FinancialDashboard>(
-              future: _dashboardFuture,
-              builder: (context, snapshot) {
-                final isLoading =
-                    snapshot.connectionState == ConnectionState.waiting;
-                final error = snapshot.error;
-                final dashboard = snapshot.data;
+                color: colorScheme.secondary,
+                child: FutureBuilder<FinancialDashboard>(
+                  future: _dashboardFuture,
+                  builder: (context, snapshot) {
+                    final isLoading =
+                        snapshot.connectionState == ConnectionState.waiting;
+                    final error = snapshot.error;
+                    final dashboard = snapshot.data;
 
-                if (error != null) {
-                  return ListView(
-                    physics: const AlwaysScrollableScrollPhysics(
-                      parent: BouncingScrollPhysics(),
-                    ),
-                    padding: EdgeInsets.fromLTRB(
-                      24,
-                      topPadding + 72,
-                      24,
-                      bottomPadding + 150,
-                    ),
-                    children: [
-                      Icon(
-                        Icons.warning_rounded,
-                        size: 56,
-                        color: colorScheme.error,
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        'Não foi possível carregar o painel.',
-                        textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.headlineSmall
-                            ?.copyWith(fontWeight: FontWeight.w800),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        error.toString(),
-                        textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.bodyMedium,
-                      ),
-                      const SizedBox(height: 24),
-                      FilledButton(
-                        onPressed: _refreshDashboard,
-                        child: const Text('Tentar novamente'),
-                      ),
-                    ],
-                  );
-                }
-
-                if (isLoading || dashboard == null) {
-                  return ListView(
-                    physics: const AlwaysScrollableScrollPhysics(
-                      parent: BouncingScrollPhysics(),
-                    ),
-                    padding: EdgeInsets.fromLTRB(
-                      24,
-                      topPadding + 92,
-                      24,
-                      bottomPadding + 150,
-                    ),
-                    children: const [_DashboardLoadingCard()],
-                  );
-                }
-
-                final topTransactions = dashboard.transactions.take(4).toList();
-                final categorySummaries = _categorySummaries(
-                  context,
-                  dashboard.transactions,
-                );
-                final netColor = dashboard.summary.balance >= 0
-                    ? colorScheme.tertiary
-                    : colorScheme.error;
-
-                return ListView(
-                  physics: const AlwaysScrollableScrollPhysics(
-                    parent: BouncingScrollPhysics(),
-                  ),
-                  padding: EdgeInsets.fromLTRB(
-                    20,
-                    topPadding + 18,
-                    20,
-                    bottomPadding + 174,
-                  ),
-                  children: [
-                    _AnimatedSection(
-                      order: 0,
-                      child: _TopIdentityBar(
-                        firstName: firstName,
-                        avatarUrl: _resolvedAvatarUrl,
-                        profileInitials: profileInitials,
-                        isResolvingAvatar: _isResolvingAvatar,
-                        onProfile: _openSettings,
-                        onSignOut: () async {
-                          await Supabase.instance.client.auth.signOut();
-                        },
-                      ),
-                    ),
-                    const SizedBox(height: 22),
-                    _AnimatedSection(
-                      order: 1,
-                      child: _PeriodAndVisionRow(
-                        month: _formatMonthLabel(dashboard.summary.month),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    _AnimatedSection(
-                      order: 2,
-                      child: _StatCardsScroller(
-                        cards: [
-                          FinanceStatCard(
-                            title: 'Entradas',
-                            value: _formatCurrency(dashboard.summary.income),
-                            subtitle:
-                                '${dashboard.summary.entriesCount} registros',
-                            icon: Icons.arrow_upward_rounded,
-                            color: colorScheme.tertiary,
-                          ),
-                          FinanceStatCard(
-                            title: 'Saídas',
-                            value: _formatCurrency(dashboard.summary.expense),
-                            subtitle:
-                                '${dashboard.summary.exitsCount} registros',
-                            icon: Icons.arrow_downward_rounded,
+                    if (error != null) {
+                      return ListView(
+                        physics: const AlwaysScrollableScrollPhysics(
+                          parent: BouncingScrollPhysics(),
+                        ),
+                        padding: EdgeInsets.fromLTRB(
+                          24,
+                          topPadding + 72,
+                          24,
+                          bottomPadding + 150,
+                        ),
+                        children: [
+                          Icon(
+                            Icons.warning_rounded,
+                            size: 56,
                             color: colorScheme.error,
                           ),
-                          FinanceStatCard(
-                            title: 'Saldo',
-                            value: _formatCurrency(dashboard.summary.balance),
-                            subtitle:
-                                '${dashboard.transactions.length} movimentações',
-                            icon: Icons.account_balance_wallet_rounded,
-                            color: netColor,
+                          const SizedBox(height: 16),
+                          Text(
+                            'Não foi possível carregar o painel.',
+                            textAlign: TextAlign.center,
+                            style: Theme.of(context).textTheme.headlineSmall
+                                ?.copyWith(fontWeight: FontWeight.w800),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            error.toString(),
+                            textAlign: TextAlign.center,
+                            style: Theme.of(context).textTheme.bodyMedium,
+                          ),
+                          const SizedBox(height: 24),
+                          FilledButton(
+                            onPressed: _refreshDashboard,
+                            child: const Text('Tentar novamente'),
                           ),
                         ],
+                      );
+                    }
+
+                    if (isLoading || dashboard == null) {
+                      return ListView(
+                        physics: const AlwaysScrollableScrollPhysics(
+                          parent: BouncingScrollPhysics(),
+                        ),
+                        padding: EdgeInsets.fromLTRB(
+                          24,
+                          topPadding + 92,
+                          24,
+                          bottomPadding + 150,
+                        ),
+                        children: const [_DashboardLoadingCard()],
+                      );
+                    }
+
+                    final topTransactions = dashboard.transactions
+                        .take(4)
+                        .toList();
+                    final categorySummaries = _categorySummaries(
+                      context,
+                      dashboard.transactions,
+                    );
+                    final netColor = dashboard.summary.balance >= 0
+                        ? colorScheme.tertiary
+                        : colorScheme.error;
+
+                    return ListView(
+                      physics: const AlwaysScrollableScrollPhysics(
+                        parent: BouncingScrollPhysics(),
                       ),
-                    ),
-                    const SizedBox(height: 18),
-                    const _AnimatedSection(
-                      order: 3,
-                      child: _SmartCardRecommendation(),
-                    ),
-                    const SizedBox(height: 14),
-                    _AnimatedSection(
-                      order: 4,
-                      child: _CategoryBreakdownCard(
-                        summaries: categorySummaries,
-                        total: dashboard.summary.expense.abs(),
-                        formatCurrency: _formatCurrency,
+                      padding: EdgeInsets.fromLTRB(
+                        20,
+                        topPadding + 18,
+                        20,
+                        bottomPadding + 174,
                       ),
-                    ),
-                    const SizedBox(height: 14),
-                    _AnimatedSection(
-                      order: 5,
-                      child: topTransactions.isEmpty
-                          ? _EmptyStateCard(
-                              onCreate: _openCreateTransactionSheet,
-                            )
-                          : _RecentTransactionsCard(
-                              transactions: topTransactions,
-                              formatCurrency: _formatCurrency,
-                              formatDate: _formatDate,
-                              transactionColor: (transaction) =>
-                                  _transactionColor(context, transaction.type),
-                              transactionIcon: _transactionIcon,
-                              onDelete: _deleteTransaction,
-                            ),
-                    ),
-                    const SizedBox(height: 14),
-                    _AnimatedSection(
-                      order: 6,
-                      child: _AiInsightCard(
-                        categorySummaries: categorySummaries,
-                        formatCurrency: _formatCurrency,
-                      ),
-                    ),
-                  ],
-                );
-              },
-            ),
-          ),
-              const _PlaceholderPage(title: 'Transações', icon: Icons.list_alt_rounded),
-              const _PlaceholderPage(title: 'Cartões', icon: Icons.credit_card_rounded),
-              const _PlaceholderPage(title: 'Chat IA', icon: Icons.auto_awesome_rounded),
+                      children: [
+                        _AnimatedSection(
+                          order: 0,
+                          child: _TopIdentityBar(
+                            firstName: firstName,
+                            avatarUrl: _resolvedAvatarUrl,
+                            profileInitials: profileInitials,
+                            isResolvingAvatar: _isResolvingAvatar,
+                            onProfile: _openSettings,
+                            onSignOut: () async {
+                              await Supabase.instance.client.auth.signOut();
+                            },
+                          ),
+                        ),
+                        const SizedBox(height: 22),
+                        _AnimatedSection(
+                          order: 1,
+                          child: _PeriodAndVisionRow(
+                            month: _formatMonthLabel(dashboard.summary.month),
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                        _AnimatedSection(
+                          order: 2,
+                          child: _StatCardsScroller(
+                            cards: [
+                              FinanceStatCard(
+                                title: 'Entradas',
+                                value: _formatCurrency(
+                                  dashboard.summary.income,
+                                ),
+                                subtitle:
+                                    '${dashboard.summary.entriesCount} registros',
+                                icon: Icons.arrow_upward_rounded,
+                                color: colorScheme.tertiary,
+                              ),
+                              FinanceStatCard(
+                                title: 'Saídas',
+                                value: _formatCurrency(
+                                  dashboard.summary.expense,
+                                ),
+                                subtitle:
+                                    '${dashboard.summary.exitsCount} registros',
+                                icon: Icons.arrow_downward_rounded,
+                                color: colorScheme.error,
+                              ),
+                              FinanceStatCard(
+                                title: 'Saldo',
+                                value: _formatCurrency(
+                                  dashboard.summary.balance,
+                                ),
+                                subtitle:
+                                    '${dashboard.transactions.length} movimentações',
+                                icon: Icons.account_balance_wallet_rounded,
+                                color: netColor,
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 18),
+                        const _AnimatedSection(
+                          order: 3,
+                          child: _SmartCardRecommendation(),
+                        ),
+                        const SizedBox(height: 14),
+                        _AnimatedSection(
+                          order: 4,
+                          child: _CategoryBreakdownCard(
+                            summaries: categorySummaries,
+                            total: dashboard.summary.expense.abs(),
+                            formatCurrency: _formatCurrency,
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        _AnimatedSection(
+                          order: 5,
+                          child: topTransactions.isEmpty
+                              ? _EmptyStateCard(
+                                  onCreate: _openCreateTransactionSheet,
+                                )
+                              : _RecentTransactionsCard(
+                                  transactions: topTransactions,
+                                  formatCurrency: _formatCurrency,
+                                  formatDate: _formatDate,
+                                  transactionColor: (transaction) =>
+                                      _transactionColor(
+                                        context,
+                                        transaction.type,
+                                      ),
+                                  transactionIcon: _transactionIcon,
+                                  onDelete: _deleteTransaction,
+                                ),
+                        ),
+                        const SizedBox(height: 14),
+                        _AnimatedSection(
+                          order: 6,
+                          child: _AiInsightCard(
+                            categorySummaries: categorySummaries,
+                            formatCurrency: _formatCurrency,
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              ),
+              const _PlaceholderPage(
+                title: 'Transações',
+                icon: Icons.list_alt_rounded,
+              ),
+              const _PlaceholderPage(
+                title: 'Cartões',
+                icon: Icons.credit_card_rounded,
+              ),
+              const _PlaceholderPage(
+                title: 'Chat IA',
+                icon: Icons.auto_awesome_rounded,
+              ),
               SettingsPage(
                 session: widget.session,
                 themeController: widget.themeController,
@@ -1903,7 +1921,7 @@ class _FloatingBottomBar extends StatelessWidget {
                     final page = pageController.positions.isNotEmpty
                         ? pageController.page ?? selectedIndex.toDouble()
                         : selectedIndex.toDouble();
-                    
+
                     return Stack(
                       children: [
                         Positioned.fill(
@@ -1912,16 +1930,23 @@ class _FloatingBottomBar extends StatelessWidget {
                             child: FractionallySizedBox(
                               widthFactor: 1 / 5,
                               child: Container(
-                                margin: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+                                margin: const EdgeInsets.symmetric(
+                                  horizontal: 2,
+                                  vertical: 2,
+                                ),
                                 decoration: BoxDecoration(
-                                  color: colorScheme.primary.withValues(alpha: 0.08),
+                                  color: colorScheme.primary.withValues(
+                                    alpha: 0.08,
+                                  ),
                                   borderRadius: BorderRadius.circular(20),
                                 ),
                                 alignment: Alignment.topCenter,
                                 child: Container(
                                   width: isVeryNarrow ? 30 : 36,
                                   height: 3,
-                                  margin: EdgeInsets.only(top: isVeryNarrow ? 3 : 4),
+                                  margin: EdgeInsets.only(
+                                    top: isVeryNarrow ? 3 : 4,
+                                  ),
                                   decoration: BoxDecoration(
                                     color: colorScheme.secondary,
                                     borderRadius: BorderRadius.circular(999),
@@ -1933,52 +1958,52 @@ class _FloatingBottomBar extends StatelessWidget {
                         ),
                         Row(
                           children: [
-                    _BottomNavItem(
-                      index: 0,
-                      selectedIndex: selectedIndex,
-                      icon: Icons.home_rounded,
-                      label: 'Início',
-                      compactLabel: 'Início',
-                      dense: isVeryNarrow,
-                      onSelected: onSelected,
-                    ),
-                    _BottomNavItem(
-                      index: 1,
-                      selectedIndex: selectedIndex,
-                      icon: Icons.list_alt_rounded,
-                      label: 'Transações',
-                      compactLabel: 'Trans.',
-                      dense: isVeryNarrow,
-                      onSelected: onSelected,
-                    ),
-                    _BottomNavItem(
-                      index: 2,
-                      selectedIndex: selectedIndex,
-                      icon: Icons.credit_card_rounded,
-                      label: 'Cartões',
-                      compactLabel: 'Cards',
-                      dense: isVeryNarrow,
-                      onSelected: onSelected,
-                    ),
-                    _BottomNavItem(
-                      index: 3,
-                      selectedIndex: selectedIndex,
-                      icon: Icons.auto_awesome_rounded,
-                      label: 'Chat IA',
-                      compactLabel: 'IA',
-                      dense: isVeryNarrow,
-                      onSelected: onSelected,
-                    ),
-                    _BottomNavItem(
-                      index: 4,
-                      selectedIndex: selectedIndex,
-                      icon: Icons.person_outline_rounded,
-                      label: 'Perfil',
-                      compactLabel: 'Perfil',
-                      dense: isVeryNarrow,
-                      onSelected: onSelected,
-                    ),
-                  ],
+                            _BottomNavItem(
+                              index: 0,
+                              selectedIndex: selectedIndex,
+                              icon: Icons.home_rounded,
+                              label: 'Início',
+                              compactLabel: 'Início',
+                              dense: isVeryNarrow,
+                              onSelected: onSelected,
+                            ),
+                            _BottomNavItem(
+                              index: 1,
+                              selectedIndex: selectedIndex,
+                              icon: Icons.list_alt_rounded,
+                              label: 'Transações',
+                              compactLabel: 'Trans.',
+                              dense: isVeryNarrow,
+                              onSelected: onSelected,
+                            ),
+                            _BottomNavItem(
+                              index: 2,
+                              selectedIndex: selectedIndex,
+                              icon: Icons.credit_card_rounded,
+                              label: 'Cartões',
+                              compactLabel: 'Cards',
+                              dense: isVeryNarrow,
+                              onSelected: onSelected,
+                            ),
+                            _BottomNavItem(
+                              index: 3,
+                              selectedIndex: selectedIndex,
+                              icon: Icons.auto_awesome_rounded,
+                              label: 'Chat IA',
+                              compactLabel: 'IA',
+                              dense: isVeryNarrow,
+                              onSelected: onSelected,
+                            ),
+                            _BottomNavItem(
+                              index: 4,
+                              selectedIndex: selectedIndex,
+                              icon: Icons.person_outline_rounded,
+                              label: 'Perfil',
+                              compactLabel: 'Perfil',
+                              dense: isVeryNarrow,
+                              onSelected: onSelected,
+                            ),
+                          ],
                         ),
                       ],
                     );
@@ -2399,21 +2424,25 @@ class _PlaceholderPage extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 64, color: colorScheme.secondary.withValues(alpha: 0.5)),
+          Icon(
+            icon,
+            size: 64,
+            color: colorScheme.secondary.withValues(alpha: 0.5),
+          ),
           const SizedBox(height: 16),
           Text(
             title,
             style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.w800,
-                  color: colorScheme.onSurface.withValues(alpha: 0.7),
-                ),
+              fontWeight: FontWeight.w800,
+              color: colorScheme.onSurface.withValues(alpha: 0.7),
+            ),
           ),
           const SizedBox(height: 8),
           Text(
             'Em breve',
             style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                  color: colorScheme.onSurface.withValues(alpha: 0.5),
-                ),
+              color: colorScheme.onSurface.withValues(alpha: 0.5),
+            ),
           ),
         ],
       ),
