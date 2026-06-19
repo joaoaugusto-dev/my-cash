@@ -29,12 +29,14 @@ export class TransactionsController {
     @Req() request: AuthenticatedRequest,
     @Query('type') type?: TransactionType,
     @Query('month') month?: string,
+    @Query('year') year?: string,
   ) {
     return this.transactionsService.findAll(
       this.authContext(request),
       request.user.userId,
       type,
       month,
+      year,
     );
   }
 
@@ -42,11 +44,13 @@ export class TransactionsController {
   getSummary(
     @Req() request: AuthenticatedRequest,
     @Query('month') month?: string,
+    @Query('year') year?: string,
   ) {
     return this.transactionsService.getSummary(
       this.authContext(request),
       request.user.userId,
       month,
+      year,
     );
   }
 

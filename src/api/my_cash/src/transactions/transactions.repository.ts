@@ -6,6 +6,7 @@ import { Transaction } from './interfaces/transaction.interface';
 export interface TransactionFilters {
   type?: TransactionType;
   month?: string;
+  year?: string;
 }
 
 export interface RepositoryAuthContext {

@@ -29,6 +29,8 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
+enum _VisionMode { monthly, yearly }
+
 class _HomePageState extends State<HomePage> {
   static const String _avatarBucket = 'avatars';
 
@@ -36,11 +38,15 @@ class _HomePageState extends State<HomePage> {
   late final SessionAccessTokenProvider _accessTokenProvider;
   late final Future<SharedPreferences> _preferencesFuture;
   Future<FinancialDashboard>? _dashboardFuture;
+  FinancialDashboard? _cachedDashboard;
   String _resolvedAvatarUrl = '';
   String _avatarStateKey = '';
   int _selectedNavIndex = 0;
   bool _isResolvingAvatar = false;
   late final PageController _pageController;
+  _VisionMode _visionMode = _VisionMode.monthly;
+  String _selectedMonth = _currentMonth();
+  String _selectedYear = DateTime.now().year.toString();
 
   @override
   void initState() {
@@ -61,13 +67,121 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<FinancialDashboard> _loadDashboard() {
-    return _apiService.fetchDashboard();
+    final future = _visionMode == _VisionMode.yearly
+        ? _apiService.fetchDashboard(year: _selectedYear)
+        : _apiService.fetchDashboard(month: _selectedMonth);
+    return future.then((data) {
+      if (mounted) {
+        setState(() {
+          _cachedDashboard = data;
+        });
+      }
+      return data;
+    });
   }
 
-  void _refreshDashboard() {
+  static String _currentMonth() {
+    final now = DateTime.now().toUtc();
+    final month = now.month.toString().padLeft(2, '0');
+    return '${now.year}-$month';
+  }
+
+  void _refreshDashboard({bool silent = false}) {
+    final future = _loadDashboard();
+    if (!silent) {
+      setState(() {
+        _dashboardFuture = future;
+      });
+      return;
+    }
     setState(() {
-      _dashboardFuture = _loadDashboard();
+      _dashboardFuture = future;
     });
+  }
+
+  void _toggleVisionMode() {
+    final newMode = _visionMode == _VisionMode.monthly
+        ? _VisionMode.yearly
+        : _VisionMode.monthly;
+    setState(() {
+      _visionMode = newMode;
+    });
+    _refreshDashboard(silent: true);
+  }
+
+  void _showPeriodPicker() {
+    if (_visionMode == _VisionMode.yearly) {
+      _showYearPicker();
+    } else {
+      _showMonthPicker();
+    }
+  }
+
+  void _showMonthPicker() {
+    final parts = _selectedMonth.split('-');
+    var pickerYear = int.tryParse(parts.first) ?? DateTime.now().year;
+    var pickerMonth = int.tryParse(parts.last) ?? DateTime.now().month;
+
+    showModalBottomSheet(
+      context: context,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            return RepaintBoundary(
+              child: _MonthPickerSheet(
+                initialYear: pickerYear,
+                initialMonth: pickerMonth,
+                onChanged: (year, month) {
+                  pickerYear = year;
+                  pickerMonth = month;
+                },
+                onConfirm: () {
+                  Navigator.of(context).pop();
+                  setState(() {
+                    _selectedMonth =
+                        '$pickerYear-${pickerMonth.toString().padLeft(2, '0')}';
+                  });
+                  _refreshDashboard(silent: true);
+                },
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _showYearPicker() {
+    var pickerYear = int.parse(_selectedYear);
+
+    showModalBottomSheet(
+      context: context,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            return RepaintBoundary(
+              child: _YearPickerSheet(
+                selectedYear: pickerYear,
+                onChanged: (year) {
+                  pickerYear = year;
+                },
+                onConfirm: () {
+                  Navigator.of(context).pop();
+                  setState(() {
+                    _selectedYear = pickerYear.toString();
+                  });
+                  _refreshDashboard(silent: true);
+                },
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   String _formatCurrency(double value) {
@@ -110,10 +224,40 @@ class _HomePageState extends State<HomePage> {
     ];
 
     if (parsedMonth == null || parsedMonth < 1 || parsedMonth > 12) {
-      return month;
+      return parts.first;
     }
 
     return '${monthNames[parsedMonth - 1]} $year';
+  }
+
+  void _goToPreviousPeriod() {
+    setState(() {
+      if (_visionMode == _VisionMode.yearly) {
+        final year = int.parse(_selectedYear);
+        _selectedYear = (year - 1).toString();
+      } else {
+        final date = DateTime.parse('$_selectedMonth-01');
+        final prev = DateTime(date.year, date.month - 1, 1);
+        _selectedMonth =
+            '${prev.year}-${prev.month.toString().padLeft(2, '0')}';
+      }
+    });
+    _refreshDashboard(silent: true);
+  }
+
+  void _goToNextPeriod() {
+    setState(() {
+      if (_visionMode == _VisionMode.yearly) {
+        final year = int.parse(_selectedYear);
+        _selectedYear = (year + 1).toString();
+      } else {
+        final date = DateTime.parse('$_selectedMonth-01');
+        final next = DateTime(date.year, date.month + 1, 1);
+        _selectedMonth =
+            '${next.year}-${next.month.toString().padLeft(2, '0')}';
+      }
+    });
+    _refreshDashboard(silent: true);
   }
 
   List<_CategorySummary> _categorySummaries(
@@ -217,10 +361,12 @@ class _HomePageState extends State<HomePage> {
       useSafeArea: true,
       backgroundColor: Colors.transparent,
       builder: (context) {
-        return _TransactionComposerSheet(
-          onSubmit: (transaction) async {
-            await _apiService.createTransaction(transaction);
-          },
+        return RepaintBoundary(
+          child: _TransactionComposerSheet(
+            onSubmit: (transaction) async {
+              await _apiService.createTransaction(transaction);
+            },
+          ),
         );
       },
     );
@@ -413,196 +559,203 @@ class _HomePageState extends State<HomePage> {
               });
             },
             children: [
-              RefreshIndicator(
-                onRefresh: () async => _refreshDashboard(),
-                color: colorScheme.secondary,
-                child: FutureBuilder<FinancialDashboard>(
-                  future: _dashboardFuture,
-                  builder: (context, snapshot) {
-                    final isLoading =
-                        snapshot.connectionState == ConnectionState.waiting;
-                    final error = snapshot.error;
-                    final dashboard = snapshot.data;
+              RepaintBoundary(
+                child: RefreshIndicator(
+                  onRefresh: () async => _refreshDashboard(),
+                  color: colorScheme.secondary,
+                  child: FutureBuilder<FinancialDashboard>(
+                    future: _dashboardFuture,
+                    builder: (context, snapshot) {
+                      final error = snapshot.error;
+                      final dashboard = _cachedDashboard ?? snapshot.data;
 
-                    if (error != null) {
+                      if (error != null && dashboard == null) {
+                        return ListView(
+                          physics: const AlwaysScrollableScrollPhysics(
+                            parent: BouncingScrollPhysics(),
+                          ),
+                          padding: EdgeInsets.fromLTRB(
+                            24,
+                            topPadding + 72,
+                            24,
+                            bottomPadding + 150,
+                          ),
+                          children: [
+                            Icon(
+                              Icons.warning_rounded,
+                              size: 56,
+                              color: colorScheme.error,
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              'Não foi possível carregar o painel.',
+                              textAlign: TextAlign.center,
+                              style: Theme.of(context).textTheme.headlineSmall
+                                  ?.copyWith(fontWeight: FontWeight.w800),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              error.toString(),
+                              textAlign: TextAlign.center,
+                              style: Theme.of(context).textTheme.bodyMedium,
+                            ),
+                            const SizedBox(height: 24),
+                            FilledButton(
+                              onPressed: _refreshDashboard,
+                              child: const Text('Tentar novamente'),
+                            ),
+                          ],
+                        );
+                      }
+
+                      if (dashboard == null) {
+                        return ListView(
+                          physics: const AlwaysScrollableScrollPhysics(
+                            parent: BouncingScrollPhysics(),
+                          ),
+                          padding: EdgeInsets.fromLTRB(
+                            24,
+                            topPadding + 92,
+                            24,
+                            bottomPadding + 150,
+                          ),
+                          children: const [_DashboardLoadingCard()],
+                        );
+                      }
+
+                      final topTransactions = dashboard.transactions
+                          .take(4)
+                          .toList();
+                      final categorySummaries = _categorySummaries(
+                        context,
+                        dashboard.transactions,
+                      );
+                      final netColor = dashboard.summary.balance >= 0
+                          ? colorScheme.tertiary
+                          : colorScheme.error;
+
                       return ListView(
                         physics: const AlwaysScrollableScrollPhysics(
                           parent: BouncingScrollPhysics(),
                         ),
                         padding: EdgeInsets.fromLTRB(
-                          24,
-                          topPadding + 72,
-                          24,
-                          bottomPadding + 150,
+                          20,
+                          topPadding + 18,
+                          20,
+                          bottomPadding + 174,
                         ),
                         children: [
-                          Icon(
-                            Icons.warning_rounded,
-                            size: 56,
-                            color: colorScheme.error,
+                          _AnimatedSection(
+                            order: 0,
+                            child: _TopIdentityBar(
+                              firstName: firstName,
+                              avatarUrl: _resolvedAvatarUrl,
+                              profileInitials: profileInitials,
+                              isResolvingAvatar: _isResolvingAvatar,
+                              onProfile: _openSettings,
+                              onSignOut: () async {
+                                await Supabase.instance.client.auth.signOut();
+                              },
+                            ),
                           ),
-                          const SizedBox(height: 16),
-                          Text(
-                            'Não foi possível carregar o painel.',
-                            textAlign: TextAlign.center,
-                            style: Theme.of(context).textTheme.headlineSmall
-                                ?.copyWith(fontWeight: FontWeight.w800),
+                          const SizedBox(height: 22),
+                          _AnimatedSection(
+                            order: 1,
+                            child: _PeriodAndVisionRow(
+                              label: _visionMode == _VisionMode.yearly
+                                  ? _selectedYear
+                                  : _formatMonthLabel(_selectedMonth),
+                              isYearly: _visionMode == _VisionMode.yearly,
+                              onToggleVision: _toggleVisionMode,
+                              onPrevious: _goToPreviousPeriod,
+                              onNext: _goToNextPeriod,
+                              onTapPeriod: _showPeriodPicker,
+                            ),
                           ),
-                          const SizedBox(height: 8),
-                          Text(
-                            error.toString(),
-                            textAlign: TextAlign.center,
-                            style: Theme.of(context).textTheme.bodyMedium,
+                          const SizedBox(height: 20),
+                          _AnimatedSection(
+                            order: 2,
+                            child: _StatCardsScroller(
+                              cards: [
+                                FinanceStatCard(
+                                  title: 'Entradas',
+                                  value: _formatCurrency(
+                                    dashboard.summary.income,
+                                  ),
+                                  subtitle:
+                                      '${dashboard.summary.entriesCount} registros',
+                                  icon: Icons.arrow_upward_rounded,
+                                  color: colorScheme.tertiary,
+                                ),
+                                FinanceStatCard(
+                                  title: 'Saídas',
+                                  value: _formatCurrency(
+                                    dashboard.summary.expense,
+                                  ),
+                                  subtitle:
+                                      '${dashboard.summary.exitsCount} registros',
+                                  icon: Icons.arrow_downward_rounded,
+                                  color: colorScheme.error,
+                                ),
+                                FinanceStatCard(
+                                  title: 'Saldo',
+                                  value: _formatCurrency(
+                                    dashboard.summary.balance,
+                                  ),
+                                  subtitle:
+                                      '${dashboard.transactions.length} movimentações',
+                                  icon: Icons.account_balance_wallet_rounded,
+                                  color: netColor,
+                                ),
+                              ],
+                            ),
                           ),
-                          const SizedBox(height: 24),
-                          FilledButton(
-                            onPressed: _refreshDashboard,
-                            child: const Text('Tentar novamente'),
+                          const SizedBox(height: 18),
+                          const _AnimatedSection(
+                            order: 3,
+                            child: _SmartCardRecommendation(),
+                          ),
+                          const SizedBox(height: 14),
+                          _AnimatedSection(
+                            order: 4,
+                            child: _CategoryBreakdownCard(
+                              summaries: categorySummaries,
+                              total: dashboard.summary.expense.abs(),
+                              formatCurrency: _formatCurrency,
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                          _AnimatedSection(
+                            order: 5,
+                            child: topTransactions.isEmpty
+                                ? _EmptyStateCard(
+                                    onCreate: _openCreateTransactionSheet,
+                                  )
+                                : _RecentTransactionsCard(
+                                    transactions: topTransactions,
+                                    formatCurrency: _formatCurrency,
+                                    formatDate: _formatDate,
+                                    transactionColor: (transaction) =>
+                                        _transactionColor(
+                                          context,
+                                          transaction.type,
+                                        ),
+                                    transactionIcon: _transactionIcon,
+                                    onDelete: _deleteTransaction,
+                                  ),
+                          ),
+                          const SizedBox(height: 14),
+                          _AnimatedSection(
+                            order: 6,
+                            child: _AiInsightCard(
+                              categorySummaries: categorySummaries,
+                              formatCurrency: _formatCurrency,
+                            ),
                           ),
                         ],
                       );
-                    }
-
-                    if (isLoading || dashboard == null) {
-                      return ListView(
-                        physics: const AlwaysScrollableScrollPhysics(
-                          parent: BouncingScrollPhysics(),
-                        ),
-                        padding: EdgeInsets.fromLTRB(
-                          24,
-                          topPadding + 92,
-                          24,
-                          bottomPadding + 150,
-                        ),
-                        children: const [_DashboardLoadingCard()],
-                      );
-                    }
-
-                    final topTransactions = dashboard.transactions
-                        .take(4)
-                        .toList();
-                    final categorySummaries = _categorySummaries(
-                      context,
-                      dashboard.transactions,
-                    );
-                    final netColor = dashboard.summary.balance >= 0
-                        ? colorScheme.tertiary
-                        : colorScheme.error;
-
-                    return ListView(
-                      physics: const AlwaysScrollableScrollPhysics(
-                        parent: BouncingScrollPhysics(),
-                      ),
-                      padding: EdgeInsets.fromLTRB(
-                        20,
-                        topPadding + 18,
-                        20,
-                        bottomPadding + 174,
-                      ),
-                      children: [
-                        _AnimatedSection(
-                          order: 0,
-                          child: _TopIdentityBar(
-                            firstName: firstName,
-                            avatarUrl: _resolvedAvatarUrl,
-                            profileInitials: profileInitials,
-                            isResolvingAvatar: _isResolvingAvatar,
-                            onProfile: _openSettings,
-                            onSignOut: () async {
-                              await Supabase.instance.client.auth.signOut();
-                            },
-                          ),
-                        ),
-                        const SizedBox(height: 22),
-                        _AnimatedSection(
-                          order: 1,
-                          child: _PeriodAndVisionRow(
-                            month: _formatMonthLabel(dashboard.summary.month),
-                          ),
-                        ),
-                        const SizedBox(height: 20),
-                        _AnimatedSection(
-                          order: 2,
-                          child: _StatCardsScroller(
-                            cards: [
-                              FinanceStatCard(
-                                title: 'Entradas',
-                                value: _formatCurrency(
-                                  dashboard.summary.income,
-                                ),
-                                subtitle:
-                                    '${dashboard.summary.entriesCount} registros',
-                                icon: Icons.arrow_upward_rounded,
-                                color: colorScheme.tertiary,
-                              ),
-                              FinanceStatCard(
-                                title: 'Saídas',
-                                value: _formatCurrency(
-                                  dashboard.summary.expense,
-                                ),
-                                subtitle:
-                                    '${dashboard.summary.exitsCount} registros',
-                                icon: Icons.arrow_downward_rounded,
-                                color: colorScheme.error,
-                              ),
-                              FinanceStatCard(
-                                title: 'Saldo',
-                                value: _formatCurrency(
-                                  dashboard.summary.balance,
-                                ),
-                                subtitle:
-                                    '${dashboard.transactions.length} movimentações',
-                                icon: Icons.account_balance_wallet_rounded,
-                                color: netColor,
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 18),
-                        const _AnimatedSection(
-                          order: 3,
-                          child: _SmartCardRecommendation(),
-                        ),
-                        const SizedBox(height: 14),
-                        _AnimatedSection(
-                          order: 4,
-                          child: _CategoryBreakdownCard(
-                            summaries: categorySummaries,
-                            total: dashboard.summary.expense.abs(),
-                            formatCurrency: _formatCurrency,
-                          ),
-                        ),
-                        const SizedBox(height: 14),
-                        _AnimatedSection(
-                          order: 5,
-                          child: topTransactions.isEmpty
-                              ? _EmptyStateCard(
-                                  onCreate: _openCreateTransactionSheet,
-                                )
-                              : _RecentTransactionsCard(
-                                  transactions: topTransactions,
-                                  formatCurrency: _formatCurrency,
-                                  formatDate: _formatDate,
-                                  transactionColor: (transaction) =>
-                                      _transactionColor(
-                                        context,
-                                        transaction.type,
-                                      ),
-                                  transactionIcon: _transactionIcon,
-                                  onDelete: _deleteTransaction,
-                                ),
-                        ),
-                        const SizedBox(height: 14),
-                        _AnimatedSection(
-                          order: 6,
-                          child: _AiInsightCard(
-                            categorySummaries: categorySummaries,
-                            formatCurrency: _formatCurrency,
-                          ),
-                        ),
-                      ],
-                    );
-                  },
+                    },
+                  ),
                 ),
               ),
               const _PlaceholderPage(
@@ -669,49 +822,59 @@ class _FinanceBackground extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: isDark
-              ? const [Color(0xFF110A22), Color(0xFF1B1230), Color(0xFF0D0B16)]
-              : const [Color(0xFFFBFAFF), Color(0xFFF4F0FF), Color(0xFFFFFFFF)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
+    return RepaintBoundary(
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: isDark
+                ? const [
+                    Color(0xFF110A22),
+                    Color(0xFF1B1230),
+                    Color(0xFF0D0B16),
+                  ]
+                : const [
+                    Color(0xFFFBFAFF),
+                    Color(0xFFF4F0FF),
+                    Color(0xFFFFFFFF),
+                  ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
         ),
-      ),
-      child: Stack(
-        children: [
-          Positioned(
-            top: -90,
-            left: -80,
-            child: _RadialGlow(
-              size: 250,
-              color: const Color(
-                0xFF7C3AED,
-              ).withValues(alpha: isDark ? 0.22 : 0.15),
+        child: Stack(
+          children: [
+            Positioned(
+              top: -90,
+              left: -80,
+              child: _RadialGlow(
+                size: 250,
+                color: const Color(
+                  0xFF7C3AED,
+                ).withValues(alpha: isDark ? 0.22 : 0.15),
+              ),
             ),
-          ),
-          Positioned(
-            top: 130,
-            right: -110,
-            child: _RadialGlow(
-              size: 260,
-              color: const Color(
-                0xFFB993FF,
-              ).withValues(alpha: isDark ? 0.18 : 0.22),
+            Positioned(
+              top: 130,
+              right: -110,
+              child: _RadialGlow(
+                size: 260,
+                color: const Color(
+                  0xFFB993FF,
+                ).withValues(alpha: isDark ? 0.18 : 0.22),
+              ),
             ),
-          ),
-          Positioned(
-            bottom: -130,
-            left: 20,
-            child: _RadialGlow(
-              size: 280,
-              color: const Color(
-                0xFF22C55E,
-              ).withValues(alpha: isDark ? 0.10 : 0.08),
+            Positioned(
+              bottom: -130,
+              left: 20,
+              child: _RadialGlow(
+                size: 280,
+                color: const Color(
+                  0xFF22C55E,
+                ).withValues(alpha: isDark ? 0.10 : 0.08),
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -754,7 +917,7 @@ class _AnimatedSectionState extends State<_AnimatedSection> {
   @override
   void initState() {
     super.initState();
-    Future<void>.delayed(Duration(milliseconds: 70 * widget.order), () {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         setState(() {
           _visible = true;
@@ -769,15 +932,17 @@ class _AnimatedSectionState extends State<_AnimatedSection> {
       return widget.child;
     }
 
-    return AnimatedSlide(
-      offset: _visible ? Offset.zero : const Offset(0, 0.04),
-      duration: const Duration(milliseconds: 520),
-      curve: Curves.easeOutCubic,
-      child: AnimatedOpacity(
-        opacity: _visible ? 1 : 0,
-        duration: const Duration(milliseconds: 460),
+    return RepaintBoundary(
+      child: AnimatedSlide(
+        offset: _visible ? Offset.zero : const Offset(0, 0.04),
+        duration: const Duration(milliseconds: 520),
         curve: Curves.easeOutCubic,
-        child: widget.child,
+        child: AnimatedOpacity(
+          opacity: _visible ? 1 : 0,
+          duration: const Duration(milliseconds: 460),
+          curve: Curves.easeOutCubic,
+          child: widget.child,
+        ),
       ),
     );
   }
@@ -947,35 +1112,55 @@ class _ProfileAvatar extends StatelessWidget {
 }
 
 class _PeriodAndVisionRow extends StatelessWidget {
-  const _PeriodAndVisionRow({required this.month});
+  const _PeriodAndVisionRow({
+    required this.label,
+    required this.isYearly,
+    required this.onToggleVision,
+    required this.onPrevious,
+    required this.onNext,
+    required this.onTapPeriod,
+  });
 
-  final String month;
+  final String label;
+  final bool isYearly;
+  final VoidCallback onToggleVision;
+  final VoidCallback onPrevious;
+  final VoidCallback onNext;
+  final VoidCallback onTapPeriod;
 
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
         final isNarrow = constraints.maxWidth < 420;
-        final monthSelector = _PillButton(
-          icon: Icons.calendar_month_rounded,
-          label: month,
-          trailingIcon: Icons.keyboard_arrow_down_rounded,
-          isPrimary: true,
+        final periodSelector = _PeriodSelector(
+          label: label,
+          isYearly: isYearly,
+          onPrevious: onPrevious,
+          onNext: onNext,
+          onTap: onTapPeriod,
         );
-        const visionToggle = _VisionToggle();
+        final visionToggle = _VisionToggle(
+          isYearly: isYearly,
+          onChanged: onToggleVision,
+        );
 
         if (isNarrow) {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [monthSelector, const SizedBox(height: 12), visionToggle],
+            children: [
+              periodSelector,
+              const SizedBox(height: 12),
+              visionToggle,
+            ],
           );
         }
 
         return Row(
           children: [
-            Expanded(child: monthSelector),
+            Expanded(child: periodSelector),
             const SizedBox(width: 14),
-            const Expanded(child: visionToggle),
+            SizedBox(width: 240, child: visionToggle),
           ],
         );
       },
@@ -983,46 +1168,75 @@ class _PeriodAndVisionRow extends StatelessWidget {
   }
 }
 
-class _PillButton extends StatelessWidget {
-  const _PillButton({
-    required this.icon,
+class _PeriodSelector extends StatefulWidget {
+  const _PeriodSelector({
     required this.label,
-    required this.trailingIcon,
-    required this.isPrimary,
+    required this.isYearly,
+    required this.onPrevious,
+    required this.onNext,
+    this.onTap,
   });
 
-  final IconData icon;
   final String label;
-  final IconData trailingIcon;
-  final bool isPrimary;
+  final bool isYearly;
+  final VoidCallback onPrevious;
+  final VoidCallback onNext;
+  final VoidCallback? onTap;
+
+  @override
+  State<_PeriodSelector> createState() => _PeriodSelectorState();
+}
+
+class _PeriodSelectorState extends State<_PeriodSelector>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _flipController;
+  late Animation<double> _flipAnimation;
+  String _previousLabel = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _previousLabel = widget.label;
+    _flipController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 400),
+    );
+    _flipAnimation = CurvedAnimation(
+      parent: _flipController,
+      curve: Curves.easeInOutCubic,
+    );
+  }
+
+  @override
+  void didUpdateWidget(_PeriodSelector oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.label != widget.label) {
+      _previousLabel = oldWidget.label;
+      _flipController.forward(from: 0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _flipController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
     return Container(
       height: 60,
-      padding: const EdgeInsets.symmetric(horizontal: 18),
       decoration: BoxDecoration(
-        gradient: isPrimary
-            ? const LinearGradient(
-                colors: [Color(0xFF5B21B6), Color(0xFF8B2CEB)],
-                begin: Alignment.centerLeft,
-                end: Alignment.centerRight,
-              )
-            : null,
-        color: isPrimary ? null : colorScheme.surface.withValues(alpha: 0.72),
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(
-          color: isPrimary
-              ? Colors.white.withValues(alpha: 0.18)
-              : colorScheme.outline.withValues(alpha: 0.55),
+        gradient: const LinearGradient(
+          colors: [Color(0xFF5B21B6), Color(0xFF8B2CEB)],
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
         ),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
         boxShadow: [
           BoxShadow(
-            color: const Color(
-              0xFF5B21B6,
-            ).withValues(alpha: isPrimary ? 0.22 : 0.04),
+            color: const Color(0xFF5B21B6).withValues(alpha: 0.22),
             blurRadius: 22,
             offset: const Offset(0, 12),
           ),
@@ -1030,78 +1244,292 @@ class _PillButton extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Icon(icon, color: isPrimary ? Colors.white : colorScheme.primary),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                color: isPrimary ? Colors.white : colorScheme.onSurface,
-                fontWeight: FontWeight.w900,
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              splashColor: Colors.white.withValues(alpha: 0.15),
+              highlightColor: Colors.white.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.horizontal(left: Radius.circular(22)),
+              onTap: widget.onPrevious,
+              child: SizedBox(
+                width: 52,
+                height: 60,
+                child: Icon(
+                  Icons.chevron_left_rounded,
+                  color: Colors.white.withValues(alpha: 0.9),
+                ),
               ),
             ),
           ),
-          Icon(
-            trailingIcon,
-            color: isPrimary
-                ? Colors.white.withValues(alpha: 0.9)
-                : colorScheme.onSurface.withValues(alpha: 0.65),
+          Expanded(
+            child: GestureDetector(
+              onTap: widget.onTap,
+              child: ClipRect(
+                child: AnimatedBuilder(
+                  animation: _flipAnimation,
+                  builder: (context, child) {
+                    final isFirstHalf = _flipAnimation.value < 0.5;
+                    final progress = _flipAnimation.value;
+                    final scaleY = isFirstHalf
+                        ? 1.0 - progress * 2.0
+                        : (progress - 0.5) * 2.0;
+                    final opacity = isFirstHalf
+                        ? 1.0 - progress * 2.0
+                        : (progress - 0.5) * 2.0;
+                    final clampedScale = scaleY.clamp(0.0, 1.0);
+                    return Transform(
+                      alignment: Alignment.center,
+                      transform: Matrix4.diagonal3Values(1.0, clampedScale, 1.0)
+                        ..setEntry(3, 2, 0.001),
+                      child: Opacity(
+                        opacity: opacity.clamp(0.0, 1.0),
+                        child: _buildContent(
+                          isFirstHalf ? _previousLabel : widget.label,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+          ),
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              splashColor: Colors.white.withValues(alpha: 0.15),
+              highlightColor: Colors.white.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.horizontal(right: Radius.circular(22)),
+              onTap: widget.onNext,
+              child: SizedBox(
+                width: 52,
+                height: 60,
+                child: Icon(
+                  Icons.chevron_right_rounded,
+                  color: Colors.white.withValues(alpha: 0.9),
+                ),
+              ),
+            ),
           ),
         ],
       ),
     );
   }
+
+  Widget _buildContent(String currentLabel) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 300),
+          transitionBuilder: (child, animation) {
+            return RotationTransition(turns: animation, child: child);
+          },
+          child: Icon(
+            widget.isYearly
+                ? Icons.event_note_rounded
+                : Icons.calendar_month_rounded,
+            key: ValueKey('icon-${widget.isYearly}'),
+            color: Colors.white.withValues(alpha: 0.9),
+            size: 20,
+          ),
+        ),
+        const SizedBox(width: 10),
+        Flexible(
+          child: Text(
+            currentLabel,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+              color: Colors.white,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 }
 
-class _VisionToggle extends StatelessWidget {
-  const _VisionToggle();
+class _VisionToggle extends StatefulWidget {
+  const _VisionToggle({required this.isYearly, required this.onChanged});
+
+  final bool isYearly;
+  final VoidCallback onChanged;
+
+  @override
+  State<_VisionToggle> createState() => _VisionToggleState();
+}
+
+class _VisionToggleState extends State<_VisionToggle>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _springController;
+  late Animation<double> _springAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _springController =
+        AnimationController(
+          vsync: this,
+          duration: const Duration(milliseconds: 600),
+        )..addListener(() {
+          if (mounted) setState(() {});
+        });
+    _springAnimation = CurvedAnimation(
+      parent: _springController,
+      curve: const SpringCurve(),
+    );
+  }
+
+  @override
+  void didUpdateWidget(_VisionToggle oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.isYearly != widget.isYearly) {
+      _springController.forward(from: 0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _springController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return Container(
-      height: 60,
-      padding: const EdgeInsets.all(5),
-      decoration: BoxDecoration(
-        color: colorScheme.surface.withValues(alpha: 0.7),
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: colorScheme.outline.withValues(alpha: 0.55)),
+    return GestureDetector(
+      onTap: widget.onChanged,
+      child: Container(
+        height: 60,
+        padding: const EdgeInsets.all(5),
+        decoration: BoxDecoration(
+          color: colorScheme.surface.withValues(alpha: 0.7),
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(
+            color: colorScheme.outline.withValues(alpha: 0.55),
+          ),
+        ),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final pillWidth = (constraints.maxWidth - 0) / 2;
+            return Stack(
+              children: [
+                AnimatedPositioned(
+                  duration: const Duration(milliseconds: 350),
+                  curve: Curves.easeInOutCubic,
+                  left: widget.isYearly ? pillWidth : 0,
+                  top: 0,
+                  bottom: 0,
+                  width: pillWidth,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: isDark
+                            ? [
+                                const Color(0xFF7C3AED).withValues(alpha: 0.6),
+                                const Color(0xFF6D28D9).withValues(alpha: 0.6),
+                              ]
+                            : [
+                                const Color(0xFF6D28D9),
+                                const Color(0xFF8B2CEB),
+                              ],
+                        begin: Alignment.centerLeft,
+                        end: Alignment.centerRight,
+                      ),
+                      borderRadius: BorderRadius.circular(17),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(
+                            0xFF5B21B6,
+                          ).withValues(alpha: 0.25),
+                          blurRadius: 10,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _ToggleLabel(
+                        isActive: !widget.isYearly,
+                        label: 'Mensal',
+                        springValue: widget.isYearly
+                            ? _springAnimation.value
+                            : 1.0 - _springAnimation.value * 0.5,
+                      ),
+                    ),
+                    Expanded(
+                      child: _ToggleLabel(
+                        isActive: widget.isYearly,
+                        label: 'Anual',
+                        springValue: widget.isYearly
+                            ? 1.0 - _springAnimation.value * 0.5
+                            : _springAnimation.value,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            );
+          },
+        ),
       ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Container(
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF6D28D9), Color(0xFF8B2CEB)],
-                ),
-                borderRadius: BorderRadius.circular(17),
-              ),
-              child: Text(
-                'Visão Mensal',
-                style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-            ),
+    );
+  }
+}
+
+class SpringCurve extends Curve {
+  const SpringCurve();
+  @override
+  double transformInternal(double t) {
+    const damping = 12.0;
+    const stiffness = 150.0;
+    const mass = 1.0;
+    final omega = stiffness / mass;
+    final zeta = damping / (2 * mass * math.sqrt(omega));
+    final omegaD = omega * math.sqrt(1 - zeta * zeta);
+    const A = 1.0;
+    const phi = 0.0;
+    return 1.0 - A * math.exp(-zeta * omega * t) * math.cos(omegaD * t + phi);
+  }
+}
+
+class _ToggleLabel extends StatelessWidget {
+  const _ToggleLabel({
+    required this.isActive,
+    required this.label,
+    this.springValue = 0.0,
+  });
+
+  final bool isActive;
+  final String label;
+  final double springValue;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      height: 50,
+      alignment: Alignment.center,
+      child: Transform.scale(
+        scale: 1.0 + springValue * 0.08,
+        child: AnimatedDefaultTextStyle(
+          duration: const Duration(milliseconds: 200),
+          style: Theme.of(context).textTheme.labelLarge!.copyWith(
+            color: isActive
+                ? Colors.white
+                : Theme.of(
+                    context,
+                  ).colorScheme.onSurface.withValues(alpha: 0.56),
+            fontWeight: isActive ? FontWeight.w900 : FontWeight.w700,
           ),
-          Expanded(
-            child: Center(
-              child: Text(
-                'Visão Anual',
-                style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                  color: colorScheme.onSurface.withValues(alpha: 0.56),
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-          ),
-        ],
+          child: Text(label),
+        ),
       ),
     );
   }
@@ -1606,9 +2034,10 @@ class _RecentTransactionsCard extends StatelessWidget {
               children: [
                 Expanded(
                   child: Text(
-                    'Transações recentes',
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    'Lançamentos',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.w900,
+                      color: colorScheme.onSurface,
                     ),
                   ),
                 ),
@@ -1882,133 +2311,128 @@ class _FloatingBottomBar extends StatelessWidget {
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 680),
         child: RepaintBoundary(
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(28),
-            child: BackdropFilter(
-              filter: ui.ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-              child: Container(
-                height: barHeight,
-                padding: EdgeInsets.fromLTRB(
-                  horizontalPadding,
-                  5,
-                  horizontalPadding,
-                  5,
+          child: Container(
+            height: barHeight,
+            padding: EdgeInsets.fromLTRB(
+              horizontalPadding,
+              5,
+              horizontalPadding,
+              5,
+            ),
+            decoration: BoxDecoration(
+              color: colorScheme.surface.withValues(
+                alpha: isDark ? 0.92 : 0.94,
+              ),
+              borderRadius: BorderRadius.circular(28),
+              border: Border.all(
+                color: colorScheme.outline.withValues(
+                  alpha: isDark ? 0.42 : 0.62,
                 ),
-                decoration: BoxDecoration(
-                  color: colorScheme.surface.withValues(
-                    alpha: isDark ? 0.72 : 0.76,
-                  ),
-                  borderRadius: BorderRadius.circular(28),
-                  border: Border.all(
-                    color: colorScheme.outline.withValues(
-                      alpha: isDark ? 0.42 : 0.62,
-                    ),
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(
-                        alpha: isDark ? 0.24 : 0.09,
-                      ),
-                      blurRadius: 24,
-                      offset: const Offset(0, 12),
-                    ),
-                  ],
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: isDark ? 0.24 : 0.09),
+                  blurRadius: 24,
+                  offset: const Offset(0, 12),
                 ),
-                child: AnimatedBuilder(
-                  animation: pageController,
-                  builder: (context, child) {
-                    final page = pageController.positions.isNotEmpty
-                        ? pageController.page ?? selectedIndex.toDouble()
-                        : selectedIndex.toDouble();
+              ],
+            ),
+            child: AnimatedBuilder(
+              animation: pageController,
+              builder: (context, _) {
+                final page = pageController.hasClients
+                    ? pageController.page ?? selectedIndex.toDouble()
+                    : selectedIndex.toDouble();
 
-                    return Stack(
-                      children: [
-                        Positioned.fill(
-                          child: Align(
-                            alignment: Alignment(-1.0 + (page * 0.5), 0),
-                            child: FractionallySizedBox(
-                              widthFactor: 1 / 5,
+                return SizedBox(
+                  width: double.infinity,
+                  child: Stack(
+                    children: [
+                      Positioned.fill(
+                        child: Align(
+                          alignment: Alignment(-1.0 + (page * 0.5), 0),
+                          child: FractionallySizedBox(
+                            widthFactor: 1 / 5,
+                            child: Container(
+                              margin: const EdgeInsets.symmetric(
+                                horizontal: 2,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: colorScheme.primary.withValues(
+                                  alpha: 0.08,
+                                ),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              alignment: Alignment.topCenter,
                               child: Container(
-                                margin: const EdgeInsets.symmetric(
-                                  horizontal: 2,
-                                  vertical: 2,
+                                width: isVeryNarrow ? 30 : 36,
+                                height: 3,
+                                margin: EdgeInsets.only(
+                                  top: isVeryNarrow ? 3 : 4,
                                 ),
                                 decoration: BoxDecoration(
-                                  color: colorScheme.primary.withValues(
-                                    alpha: 0.08,
-                                  ),
-                                  borderRadius: BorderRadius.circular(20),
-                                ),
-                                alignment: Alignment.topCenter,
-                                child: Container(
-                                  width: isVeryNarrow ? 30 : 36,
-                                  height: 3,
-                                  margin: EdgeInsets.only(
-                                    top: isVeryNarrow ? 3 : 4,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: colorScheme.secondary,
-                                    borderRadius: BorderRadius.circular(999),
-                                  ),
+                                  color: colorScheme.secondary,
+                                  borderRadius: BorderRadius.circular(999),
                                 ),
                               ),
                             ),
                           ),
                         ),
-                        Row(
-                          children: [
-                            _BottomNavItem(
-                              index: 0,
-                              selectedIndex: selectedIndex,
-                              icon: Icons.home_rounded,
-                              label: 'Início',
-                              compactLabel: 'Início',
-                              dense: isVeryNarrow,
-                              onSelected: onSelected,
-                            ),
-                            _BottomNavItem(
-                              index: 1,
-                              selectedIndex: selectedIndex,
-                              icon: Icons.list_alt_rounded,
-                              label: 'Transações',
-                              compactLabel: 'Trans.',
-                              dense: isVeryNarrow,
-                              onSelected: onSelected,
-                            ),
-                            _BottomNavItem(
-                              index: 2,
-                              selectedIndex: selectedIndex,
-                              icon: Icons.credit_card_rounded,
-                              label: 'Cartões',
-                              compactLabel: 'Cards',
-                              dense: isVeryNarrow,
-                              onSelected: onSelected,
-                            ),
-                            _BottomNavItem(
-                              index: 3,
-                              selectedIndex: selectedIndex,
-                              icon: Icons.auto_awesome_rounded,
-                              label: 'Chat IA',
-                              compactLabel: 'IA',
-                              dense: isVeryNarrow,
-                              onSelected: onSelected,
-                            ),
-                            _BottomNavItem(
-                              index: 4,
-                              selectedIndex: selectedIndex,
-                              icon: Icons.person_outline_rounded,
-                              label: 'Perfil',
-                              compactLabel: 'Perfil',
-                              dense: isVeryNarrow,
-                              onSelected: onSelected,
-                            ),
-                          ],
-                        ),
-                      ],
-                    );
-                  },
-                ),
-              ),
+                      ),
+                      Row(
+                        children: [
+                          _BottomNavItem(
+                            index: 0,
+                            selectedIndex: selectedIndex,
+                            icon: Icons.home_rounded,
+                            label: 'Início',
+                            compactLabel: 'Início',
+                            dense: isVeryNarrow,
+                            onSelected: onSelected,
+                          ),
+                          _BottomNavItem(
+                            index: 1,
+                            selectedIndex: selectedIndex,
+                            icon: Icons.list_alt_rounded,
+                            label: 'Transações',
+                            compactLabel: 'Trans.',
+                            dense: isVeryNarrow,
+                            onSelected: onSelected,
+                          ),
+                          _BottomNavItem(
+                            index: 2,
+                            selectedIndex: selectedIndex,
+                            icon: Icons.credit_card_rounded,
+                            label: 'Cartões',
+                            compactLabel: 'Cards',
+                            dense: isVeryNarrow,
+                            onSelected: onSelected,
+                          ),
+                          _BottomNavItem(
+                            index: 3,
+                            selectedIndex: selectedIndex,
+                            icon: Icons.auto_awesome_rounded,
+                            label: 'Chat IA',
+                            compactLabel: 'IA',
+                            dense: isVeryNarrow,
+                            onSelected: onSelected,
+                          ),
+                          _BottomNavItem(
+                            index: 4,
+                            selectedIndex: selectedIndex,
+                            icon: Icons.person_outline_rounded,
+                            label: 'Perfil',
+                            compactLabel: 'Perfil',
+                            dense: isVeryNarrow,
+                            onSelected: onSelected,
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                );
+              },
             ),
           ),
         ),
@@ -3627,6 +4051,403 @@ class _PlaceholderPage extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _MonthPickerSheet extends StatelessWidget {
+  const _MonthPickerSheet({
+    required this.initialYear,
+    required this.initialMonth,
+    required this.onChanged,
+    required this.onConfirm,
+  });
+
+  final int initialYear;
+  final int initialMonth;
+  final void Function(int year, int month) onChanged;
+  final VoidCallback onConfirm;
+
+  @override
+  Widget build(BuildContext context) {
+    return _PickerSheetWrapper(
+      child: _MonthWheel(
+        initialYear: initialYear,
+        initialMonth: initialMonth,
+        onChanged: onChanged,
+        onConfirm: onConfirm,
+      ),
+    );
+  }
+}
+
+class _MonthWheel extends StatefulWidget {
+  const _MonthWheel({
+    required this.initialYear,
+    required this.initialMonth,
+    required this.onChanged,
+    required this.onConfirm,
+  });
+
+  final int initialYear;
+  final int initialMonth;
+  final void Function(int year, int month) onChanged;
+  final VoidCallback onConfirm;
+
+  @override
+  State<_MonthWheel> createState() => _MonthWheelState();
+}
+
+class _MonthWheelState extends State<_MonthWheel> {
+  late int _year;
+  late int _selectedMonth;
+  late FixedExtentScrollController _scrollController;
+
+  static const _months = [
+    'Janeiro',
+    'Fevereiro',
+    'Março',
+    'Abril',
+    'Maio',
+    'Junho',
+    'Julho',
+    'Agosto',
+    'Setembro',
+    'Outubro',
+    'Novembro',
+    'Dezembro',
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _year = widget.initialYear;
+    _selectedMonth = widget.initialMonth;
+    _scrollController = FixedExtentScrollController(
+      initialItem: widget.initialMonth - 1,
+    );
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Escolha o mês',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w900,
+                    color: colorScheme.onSurface,
+                  ),
+                ),
+              ),
+              _HeaderIconButton(
+                icon: Icons.chevron_left_rounded,
+                onTap: () {
+                  setState(() => _year--);
+                  widget.onChanged(_year, _selectedMonth);
+                },
+              ),
+              const SizedBox(width: 8),
+              Text(
+                '$_year',
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w900,
+                  color: colorScheme.primary,
+                ),
+              ),
+              const SizedBox(width: 8),
+              _HeaderIconButton(
+                icon: Icons.chevron_right_rounded,
+                onTap: () {
+                  setState(() => _year++);
+                  widget.onChanged(_year, _selectedMonth);
+                },
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          SizedBox(
+            height: 200,
+            child: ListWheelScrollView(
+              controller: _scrollController,
+              itemExtent: 52,
+              diameterRatio: 1.3,
+              physics: const FixedExtentScrollPhysics(),
+              onSelectedItemChanged: (index) {
+                setState(() => _selectedMonth = index + 1);
+                widget.onChanged(_year, _selectedMonth);
+              },
+              children: List.generate(12, (index) {
+                final month = index + 1;
+                final isSelected = month == _selectedMonth;
+                return Center(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: isSelected
+                          ? colorScheme.primary.withValues(alpha: 0.12)
+                          : Colors.transparent,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      _months[index],
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        color: isSelected
+                            ? colorScheme.primary
+                            : colorScheme.onSurface.withValues(alpha: 0.55),
+                        fontWeight: isSelected
+                            ? FontWeight.w900
+                            : FontWeight.w600,
+                        fontSize: isSelected ? 22 : 17,
+                      ),
+                    ),
+                  ),
+                );
+              }),
+            ),
+          ),
+          const SizedBox(height: 20),
+          SizedBox(
+            width: double.infinity,
+            height: 54,
+            child: FilledButton(
+              onPressed: widget.onConfirm,
+              style: FilledButton.styleFrom(
+                backgroundColor: colorScheme.primary,
+                foregroundColor: colorScheme.onPrimary,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+              ),
+              child: Text(
+                'Selecionar ${_months[_selectedMonth - 1]} de $_year',
+                style: Theme.of(
+                  context,
+                ).textTheme.labelLarge?.copyWith(
+                  color: colorScheme.onPrimary,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _YearPickerSheet extends StatelessWidget {
+  const _YearPickerSheet({
+    required this.selectedYear,
+    required this.onChanged,
+    required this.onConfirm,
+  });
+
+  final int selectedYear;
+  final void Function(int year) onChanged;
+  final VoidCallback onConfirm;
+
+  @override
+  Widget build(BuildContext context) {
+    return _PickerSheetWrapper(
+      child: _YearPickerGrid(
+        selectedYear: selectedYear,
+        onChanged: onChanged,
+        onConfirm: onConfirm,
+      ),
+    );
+  }
+}
+
+class _YearPickerGrid extends StatefulWidget {
+  const _YearPickerGrid({
+    required this.selectedYear,
+    required this.onChanged,
+    required this.onConfirm,
+  });
+
+  final int selectedYear;
+  final void Function(int year) onChanged;
+  final VoidCallback onConfirm;
+
+  @override
+  State<_YearPickerGrid> createState() => _YearPickerGridState();
+}
+
+class _YearPickerGridState extends State<_YearPickerGrid> {
+  late int _selectedYear;
+  late FixedExtentScrollController _scrollController;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedYear = widget.selectedYear;
+    final initialIndex = widget.selectedYear - 2000;
+    _scrollController = FixedExtentScrollController(
+      initialItem: initialIndex.clamp(0, 100),
+    );
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 24, 24, 24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            'Escolha o ano',
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w900,
+              color: colorScheme.onSurface,
+            ),
+          ),
+          const SizedBox(height: 20),
+          SizedBox(
+            height: 200,
+            child: ListWheelScrollView(
+              controller: _scrollController,
+              itemExtent: 48,
+              diameterRatio: 1.2,
+              physics: const FixedExtentScrollPhysics(),
+              onSelectedItemChanged: (index) {
+                final year = 2000 + index;
+                setState(() => _selectedYear = year);
+                widget.onChanged(year);
+              },
+              children: List.generate(101, (index) {
+                final year = 2000 + index;
+                final isSelected = year == _selectedYear;
+                return Center(
+                  child: Text(
+                    '$year',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      color: isSelected
+                          ? colorScheme.primary
+                          : colorScheme.onSurface.withValues(alpha: 0.5),
+                      fontWeight: isSelected
+                          ? FontWeight.w900
+                          : FontWeight.w600,
+                      fontSize: isSelected ? 24 : 18,
+                    ),
+                  ),
+                );
+              }),
+            ),
+          ),
+          const SizedBox(height: 20),
+          SizedBox(
+            width: double.infinity,
+            height: 54,
+            child: FilledButton(
+              onPressed: widget.onConfirm,
+              style: FilledButton.styleFrom(
+                backgroundColor: colorScheme.primary,
+                foregroundColor: colorScheme.onPrimary,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+              ),
+              child: Text(
+                'Selecionar $_selectedYear',
+                style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                  color: colorScheme.onPrimary,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PickerSheetWrapper extends StatelessWidget {
+  const _PickerSheetWrapper({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: colorScheme.surface.withValues(alpha: isDark ? 0.96 : 0.98),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+        border: Border(
+          top: BorderSide(color: colorScheme.outline.withValues(alpha: 0.4)),
+        ),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const SizedBox(height: 12),
+          Container(
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: colorScheme.onSurface.withValues(alpha: 0.2),
+              borderRadius: BorderRadius.circular(999),
+            ),
+          ),
+          Flexible(child: child),
+        ],
+      ),
+    );
+  }
+}
+
+class _HeaderIconButton extends StatelessWidget {
+  const _HeaderIconButton({required this.icon, required this.onTap});
+
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Material(
+      color: colorScheme.surface.withValues(alpha: 0.6),
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: onTap,
+        child: Container(
+          width: 42,
+          height: 42,
+          alignment: Alignment.center,
+          child: Icon(icon, color: colorScheme.onSurface, size: 22),
+        ),
       ),
     );
   }

@@ -23,8 +23,11 @@ export class InMemoryTransactionsRepository implements TransactionsRepository {
       const matchesMonth = filters?.month
         ? transaction.occurredAt.startsWith(filters.month)
         : true;
+      const matchesYear = filters?.year
+        ? transaction.occurredAt.startsWith(filters.year)
+        : true;
 
-      return matchesType && matchesMonth;
+      return matchesType && matchesMonth && matchesYear;
     });
   }
 

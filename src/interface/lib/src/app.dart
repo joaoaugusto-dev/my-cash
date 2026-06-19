@@ -53,8 +53,8 @@ ColorScheme _lightScheme() {
 ColorScheme _darkScheme() {
   return const ColorScheme(
     brightness: Brightness.dark,
-    primary: AppPalette.darkPrimary,
-    onPrimary: Color(0xFF1A1033),
+    primary: Color(0xFF7C3AED),
+    onPrimary: Colors.white,
     secondary: AppPalette.darkSecondary,
     onSecondary: Colors.white,
     error: AppPalette.darkError,

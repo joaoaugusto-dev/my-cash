@@ -16,11 +16,20 @@ class TransactionsApiService {
   final FutureOr<String> Function() accessTokenProvider;
   final http.Client _client;
 
-  Future<FinancialDashboard> fetchDashboard({String? month}) async {
-    final monthFilter = month ?? _currentMonth();
+  Future<FinancialDashboard> fetchDashboard({
+    String? month,
+    String? year,
+  }) async {
+    final queryParams = <String, String>{};
+    if (year != null) {
+      queryParams['year'] = year;
+    } else {
+      queryParams['month'] = month ?? _currentMonth();
+    }
+    final queryString = Uri(queryParameters: queryParams).query;
     final responses = await Future.wait([
-      _getJson('/transactions/summary?month=$monthFilter'),
-      _getJson('/transactions?month=$monthFilter'),
+      _getJson('/transactions/summary?$queryString'),
+      _getJson('/transactions?$queryString'),
     ]);
 
     return FinancialDashboard.fromJson(

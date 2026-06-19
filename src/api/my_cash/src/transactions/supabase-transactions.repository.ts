@@ -45,6 +45,9 @@ export class SupabaseTransactionsRepository implements TransactionsRepository {
     if (filters?.month) {
       const { startDate, endDate } = this.getMonthWindow(filters.month);
       query = query.gte('occurred_at', startDate).lt('occurred_at', endDate);
+    } else if (filters?.year) {
+      const { startDate, endDate } = this.getYearWindow(filters.year);
+      query = query.gte('occurred_at', startDate).lt('occurred_at', endDate);
     }
 
     const { data, error } = await query;
@@ -193,6 +196,20 @@ export class SupabaseTransactionsRepository implements TransactionsRepository {
     const startDate = `${month}-01T00:00:00.000Z`;
     const endDate = new Date(startDate);
     endDate.setUTCMonth(endDate.getUTCMonth() + 1);
+
+    return {
+      startDate,
+      endDate: endDate.toISOString(),
+    };
+  }
+
+  private getYearWindow(year: string): {
+    startDate: string;
+    endDate: string;
+  } {
+    const startDate = `${year}-01-01T00:00:00.000Z`;
+    const endDate = new Date(startDate);
+    endDate.setUTCFullYear(endDate.getUTCFullYear() + 1);
 
     return {
       startDate,

@@ -30,10 +30,12 @@ export class TransactionsService {
     userId: string,
     type?: TransactionType,
     month?: string,
+    year?: string,
   ): Promise<Transaction[]> {
     return this.transactionsRepository.findAll(authContext, userId, {
       type,
       month,
+      year,
     });
   }
 
@@ -41,12 +43,14 @@ export class TransactionsService {
     authContext: RepositoryAuthContext,
     userId: string,
     month?: string,
+    year?: string,
   ): Promise<TransactionSummary> {
     const scopedTransactions = await this.findAll(
       authContext,
       userId,
       undefined,
       month,
+      year,
     );
 
     const income = scopedTransactions
@@ -57,8 +61,10 @@ export class TransactionsService {
       .filter((transaction) => transaction.type === TransactionType.EXPENSE)
       .reduce((total, transaction) => total + transaction.amount, 0);
 
+    const period = year ?? month ?? this.currentMonth();
+
     return {
-      month: month ?? this.currentMonth(),
+      month: period,
       income,
       expense,
       balance: income - expense,
