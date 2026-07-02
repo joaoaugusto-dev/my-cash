@@ -10,6 +10,7 @@ export interface Transaction {
   occurredAt: string;
   notes?: string;
   source?: string;
+  cardId?: string;
   createdAt: string;
   updatedAt: string;
 }

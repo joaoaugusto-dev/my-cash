@@ -17,6 +17,7 @@ interface TransactionRow {
   occurred_at: string;
   notes: string | null;
   source: string | null;
+  card_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -168,6 +169,7 @@ export class SupabaseTransactionsRepository implements TransactionsRepository {
       occurred_at: transaction.occurredAt,
       notes: transaction.notes ?? null,
       source: transaction.source ?? null,
+      card_id: transaction.cardId ?? null,
       created_at: transaction.createdAt,
       updated_at: transaction.updatedAt,
     };
@@ -184,6 +186,7 @@ export class SupabaseTransactionsRepository implements TransactionsRepository {
       occurredAt: row.occurred_at,
       notes: row.notes ?? undefined,
       source: row.source ?? undefined,
+      cardId: row.card_id ?? undefined,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };

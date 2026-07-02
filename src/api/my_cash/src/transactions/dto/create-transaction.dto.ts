@@ -8,4 +8,5 @@ export interface CreateTransactionDto {
   occurredAt: string;
   notes?: string;
   source?: string;
+  cardId?: string;
 }

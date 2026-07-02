@@ -1,6 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { InMemoryCardsRepository } from '../cards/in-memory-cards.repository';
+import { CardsService } from '../cards/cards.service';
 import { TransactionType } from './transaction-type.enum';
 import { TransactionsController } from './transactions.controller';
 import { InMemoryTransactionsRepository } from './in-memory-transactions.repository';
@@ -17,7 +19,10 @@ describe('TransactionsController', () => {
         {
           provide: TransactionsService,
           useFactory: () =>
-            new TransactionsService(new InMemoryTransactionsRepository()),
+            new TransactionsService(
+              new InMemoryTransactionsRepository(),
+              new CardsService(new InMemoryCardsRepository()),
+            ),
         },
         {
           provide: JwtAuthGuard,

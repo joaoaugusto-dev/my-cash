@@ -1,18 +1,17 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { CardsModule } from '../cards/cards.module';
-import { TransactionsController } from './transactions.controller';
-import { SupabaseTransactionsRepository } from './supabase-transactions.repository';
-import { TRANSACTIONS_REPOSITORY } from './transactions.repository';
-import { TransactionsService } from './transactions.service';
+import { CardsController } from './cards.controller';
+import { SupabaseCardsRepository } from './supabase-cards.repository';
+import { CARDS_REPOSITORY } from './cards.repository';
+import { CardsService } from './cards.service';
 
 @Module({
-  imports: [ConfigModule, CardsModule],
-  controllers: [TransactionsController],
+  imports: [ConfigModule],
+  controllers: [CardsController],
   providers: [
-    TransactionsService,
+    CardsService,
     {
-      provide: TRANSACTIONS_REPOSITORY,
+      provide: CARDS_REPOSITORY,
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => {
         const supabaseUrl = configService.get<string>('SUPABASE_URL');
@@ -28,10 +27,10 @@ import { TransactionsService } from './transactions.service';
           );
         }
 
-        return new SupabaseTransactionsRepository(supabaseUrl, supabaseAnonKey);
+        return new SupabaseCardsRepository(supabaseUrl, supabaseAnonKey);
       },
     },
   ],
-  exports: [TransactionsService],
+  exports: [CardsService],
 })
-export class TransactionsModule {}
+export class CardsModule {}

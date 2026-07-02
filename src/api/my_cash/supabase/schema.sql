@@ -50,13 +50,39 @@ create index if not exists transactions_user_id_occurred_at_idx
 create index if not exists transactions_user_id_type_idx
   on public.transactions (user_id, type);
 
+create table if not exists public.cards (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users (id) on delete cascade,
+  name text not null,
+  brand text not null,
+  last_digits text not null check (last_digits ~ '^\d{4}$'),
+  limit_amount numeric(14, 2) not null check (limit_amount > 0),
+  closing_day smallint not null check (closing_day between 1 and 31),
+  due_day smallint not null check (due_day between 1 and 31),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists cards_user_id_idx
+  on public.cards (user_id);
+
+alter table public.transactions
+  add column if not exists card_id uuid references public.cards (id) on delete set null;
+
+create index if not exists transactions_card_id_idx
+  on public.transactions (card_id)
+  where card_id is not null;
+
 grant select, insert, update, delete on public.transactions to service_role;
 grant select, insert, update, delete on public.profiles to service_role;
+grant select, insert, update, delete on public.cards to service_role;
 grant select, insert, update, delete on public.transactions to authenticated;
+grant select, insert, update, delete on public.cards to authenticated;
 grant select, update on public.profiles to authenticated;
 
 alter table public.profiles enable row level security;
 alter table public.transactions enable row level security;
+alter table public.cards enable row level security;
 
 create or replace function public.set_updated_at()
 returns trigger
@@ -77,6 +103,11 @@ for each row execute function public.set_updated_at();
 drop trigger if exists set_transactions_updated_at on public.transactions;
 create trigger set_transactions_updated_at
 before update on public.transactions
+for each row execute function public.set_updated_at();
+
+drop trigger if exists set_cards_updated_at on public.cards;
+create trigger set_cards_updated_at
+before update on public.cards
 for each row execute function public.set_updated_at();
 
 create or replace function public.handle_auth_user_upsert()
@@ -192,6 +223,31 @@ with check (auth.uid() = user_id);
 drop policy if exists "Users can delete own transactions" on public.transactions;
 create policy "Users can delete own transactions"
 on public.transactions
+for delete
+using (auth.uid() = user_id);
+
+drop policy if exists "Users can read own cards" on public.cards;
+create policy "Users can read own cards"
+on public.cards
+for select
+using (auth.uid() = user_id);
+
+drop policy if exists "Users can insert own cards" on public.cards;
+create policy "Users can insert own cards"
+on public.cards
+for insert
+with check (auth.uid() = user_id);
+
+drop policy if exists "Users can update own cards" on public.cards;
+create policy "Users can update own cards"
+on public.cards
+for update
+using (auth.uid() = user_id)
+with check (auth.uid() = user_id);
+
+drop policy if exists "Users can delete own cards" on public.cards;
+create policy "Users can delete own cards"
+on public.cards
 for delete
 using (auth.uid() = user_id);
 

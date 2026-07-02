@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { randomUUID } from 'crypto';
+import { CardsService } from '../cards/cards.service';
 import { CreateTransactionDto } from './dto/create-transaction.dto';
 import { UpdateTransactionDto } from './dto/update-transaction.dto';
 import { TransactionType } from './transaction-type.enum';
@@ -23,7 +24,18 @@ export class TransactionsService {
   constructor(
     @Inject(TRANSACTIONS_REPOSITORY)
     private readonly transactionsRepository: TransactionsRepository,
+    private readonly cardsService: CardsService,
   ) {}
+
+  /** Throws NotFoundException if cardId is set but doesn't belong to userId. */
+  private async assertCardOwnership(
+    authContext: RepositoryAuthContext,
+    userId: string,
+    cardId: string | undefined,
+  ): Promise<void> {
+    if (!cardId) return;
+    await this.cardsService.findOne(authContext, userId, cardId);
+  }
 
   async findAll(
     authContext: RepositoryAuthContext,
@@ -91,6 +103,7 @@ export class TransactionsService {
     dto: CreateTransactionDto,
   ): Promise<Transaction> {
     this.assertValidPayload(dto);
+    await this.assertCardOwnership(authContext, userId, dto.cardId);
 
     const now = new Date().toISOString();
     const transaction: Transaction = {
@@ -103,6 +116,7 @@ export class TransactionsService {
       occurredAt: this.normalizeDate(dto.occurredAt),
       notes: this.normalizeOptionalString(dto.notes),
       source: this.normalizeOptionalString(dto.source),
+      cardId: dto.cardId,
       createdAt: now,
       updatedAt: now,
     };
@@ -149,6 +163,11 @@ export class TransactionsService {
 
     if (dto.source !== undefined) {
       nextTransaction.source = this.normalizeOptionalString(dto.source);
+    }
+
+    if (dto.cardId !== undefined) {
+      await this.assertCardOwnership(authContext, userId, dto.cardId);
+      nextTransaction.cardId = dto.cardId;
     }
 
     nextTransaction.updatedAt = new Date().toISOString();
