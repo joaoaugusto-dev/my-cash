@@ -13,6 +13,8 @@ import {
   type RepositoryAuthContext,
 } from './cards.repository';
 
+const DEFAULT_CARD_COLOR = '#6D28D9';
+
 @Injectable()
 export class CardsService {
   constructor(
@@ -52,6 +54,10 @@ export class CardsService {
       limitAmount: this.normalizeAmount(dto.limitAmount),
       closingDay: this.normalizeDay(dto.closingDay, 'closingDay'),
       dueDay: this.normalizeDay(dto.dueDay, 'dueDay'),
+      color:
+        dto.color !== undefined
+          ? this.normalizeColor(dto.color)
+          : DEFAULT_CARD_COLOR,
       createdAt: now,
       updatedAt: now,
     };
@@ -90,6 +96,10 @@ export class CardsService {
 
     if (dto.dueDay !== undefined) {
       nextCard.dueDay = this.normalizeDay(dto.dueDay, 'dueDay');
+    }
+
+    if (dto.color !== undefined) {
+      nextCard.color = this.normalizeColor(dto.color);
     }
 
     nextCard.updatedAt = new Date().toISOString();
@@ -155,5 +165,13 @@ export class CardsService {
     }
 
     return day;
+  }
+
+  private normalizeColor(color: string): string {
+    if (typeof color !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(color)) {
+      throw new BadRequestException('color must be a hex string like #6D28D9');
+    }
+
+    return color.toUpperCase();
   }
 }

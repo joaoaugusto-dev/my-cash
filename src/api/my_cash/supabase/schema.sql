@@ -66,6 +66,11 @@ create table if not exists public.cards (
 create index if not exists cards_user_id_idx
   on public.cards (user_id);
 
+-- User-chosen face color, independent of brand (every "Visa" no longer looks
+-- identical). Same default as the app's "Outra" bandeira gradient.
+alter table public.cards
+  add column if not exists color text not null default '#6D28D9';
+
 alter table public.transactions
   add column if not exists card_id uuid references public.cards (id) on delete set null;
 
