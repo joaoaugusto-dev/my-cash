@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
@@ -60,6 +61,19 @@ class _ChatComposerState extends State<ChatComposer> {
     super.dispose();
   }
 
+  // Physical keyboards only (web/desktop): Enter sends, Shift+Enter breaks
+  // the line. Mobile virtual keyboards don't route through here.
+  KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
+    if (!kIsWeb) return KeyEventResult.ignored;
+    if (event is! KeyDownEvent ||
+        event.logicalKey != LogicalKeyboardKey.enter) {
+      return KeyEventResult.ignored;
+    }
+    if (HardwareKeyboard.instance.isShiftPressed) return KeyEventResult.ignored;
+    _sendText();
+    return KeyEventResult.handled;
+  }
+
   void _sendText() {
     final text = _textController.text.trim();
     if (text.isEmpty) return;
@@ -108,7 +122,10 @@ class _ChatComposerState extends State<ChatComposer> {
   Future<void> _startRecording() async {
     if (!await _recorder.hasPermission()) return;
     final path = await _preparePath();
-    await _recorder.start(const RecordConfig(encoder: AudioEncoder.aacLc), path: path);
+    await _recorder.start(
+      const RecordConfig(encoder: AudioEncoder.aacLc),
+      path: path,
+    );
     setState(() {
       _isRecording = true;
       _isLocked = false;
@@ -200,14 +217,20 @@ class _ChatComposerState extends State<ChatComposer> {
         Expanded(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxHeight: 120),
-            child: TextField(
-              controller: _textController,
-              minLines: 1,
-              maxLines: 5,
-              textCapitalization: TextCapitalization.sentences,
-              decoration: const InputDecoration(
-                hintText: 'Mensagem',
-                contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            child: Focus(
+              onKeyEvent: _handleKeyEvent,
+              child: TextField(
+                controller: _textController,
+                minLines: 1,
+                maxLines: 5,
+                textCapitalization: TextCapitalization.sentences,
+                decoration: const InputDecoration(
+                  hintText: 'Mensagem',
+                  contentPadding: EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 10,
+                  ),
+                ),
               ),
             ),
           ),
@@ -249,7 +272,9 @@ class _ChatComposerState extends State<ChatComposer> {
         if (!_isLocked) ...[
           Icon(
             Icons.keyboard_arrow_up_rounded,
-            color: colorScheme.primary.withValues(alpha: 0.4 + lockProgress * 0.6),
+            color: colorScheme.primary.withValues(
+              alpha: 0.4 + lockProgress * 0.6,
+            ),
           ),
           const SizedBox(width: 2),
         ],
@@ -257,15 +282,23 @@ class _ChatComposerState extends State<ChatComposer> {
         const SizedBox(width: 8),
         Text(
           _formatElapsed(_elapsed),
-          style: TextStyle(color: colorScheme.onSurface, fontWeight: FontWeight.w600),
+          style: TextStyle(
+            color: colorScheme.onSurface,
+            fontWeight: FontWeight.w600,
+          ),
         ),
         const SizedBox(width: 12),
         Expanded(
           child: Opacity(
             opacity: (1 - _dragDx / _cancelDragThreshold).clamp(0.3, 1.0),
             child: Text(
-              _isLocked ? 'Toque em enviar' : 'Arraste ← p/ cancelar · ↑ p/ travar',
-              style: TextStyle(color: colorScheme.onSurface.withValues(alpha: 0.6), fontSize: 12),
+              _isLocked
+                  ? 'Toque em enviar'
+                  : 'Arraste ← p/ cancelar · ↑ p/ travar',
+              style: TextStyle(
+                color: colorScheme.onSurface.withValues(alpha: 0.6),
+                fontSize: 12,
+              ),
               overflow: TextOverflow.ellipsis,
             ),
           ),
@@ -293,7 +326,11 @@ class _ChatComposerState extends State<ChatComposer> {
 }
 
 class _RoundIconButton extends StatelessWidget {
-  const _RoundIconButton({required this.icon, required this.onTap, required this.color});
+  const _RoundIconButton({
+    required this.icon,
+    required this.onTap,
+    required this.color,
+  });
 
   final IconData icon;
   final VoidCallback onTap;

@@ -194,7 +194,11 @@ class _CardsPageState extends State<CardsPage> {
 }
 
 class _CardTile extends StatelessWidget {
-  const _CardTile({required this.card, required this.spent, required this.onTap});
+  const _CardTile({
+    required this.card,
+    required this.spent,
+    required this.onTap,
+  });
 
   final CreditCard card;
   final double spent;
@@ -205,95 +209,107 @@ class _CardTile extends StatelessWidget {
     final brand = CardBrand.fromApiValue(card.brand);
     final gradient = cardGradient(colorFromHex(card.color));
 
-    return Material(
-      color: Colors.transparent,
-      borderRadius: BorderRadius.circular(22),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(22),
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: gradient,
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 480),
+        child: Material(
+          color: Colors.transparent,
+          borderRadius: BorderRadius.circular(22),
+          child: InkWell(
             borderRadius: BorderRadius.circular(22),
-            boxShadow: [
-              BoxShadow(
-                color: gradient.last.withValues(alpha: 0.35),
-                blurRadius: 18,
-                offset: const Offset(0, 10),
-              ),
-            ],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      card.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  BrandBadge(brand: brand, customLabel: card.brand),
-                  const SizedBox(width: 8),
-                  // Explicit affordance: the whole tile is tappable to edit,
-                  // this chip just makes that discoverable at a glance.
-                  Tooltip(
-                    message: 'Editar cartão',
-                    child: Container(
-                      width: 26,
-                      height: 26,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.2),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        Icons.edit_rounded,
-                        size: 14,
-                        color: Colors.white,
-                      ),
-                    ),
+            onTap: onTap,
+            child: Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: gradient,
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(22),
+                boxShadow: [
+                  BoxShadow(
+                    color: gradient.last.withValues(alpha: 0.35),
+                    blurRadius: 18,
+                    offset: const Offset(0, 10),
                   ),
                 ],
               ),
-              const SizedBox(height: 18),
-          Text(
-            '••••  ••••  ••••  ${card.lastDigits}',
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              color: Colors.white,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 2.4,
-            ),
-          ),
-          const SizedBox(height: 16),
-          _InvoiceUsageBar(spent: spent, limit: card.limitAmount),
-          const SizedBox(height: 14),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Expanded(
-                child: _CardInfoLabel(
-                  label: 'Limite',
-                  value: formatCurrencyBRL(card.limitAmount),
-                ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          card.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.titleMedium
+                              ?.copyWith(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w800,
+                              ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      BrandBadge(brand: brand, customLabel: card.brand),
+                      const SizedBox(width: 8),
+                      // Explicit affordance: the whole tile is tappable to edit,
+                      // this chip just makes that discoverable at a glance.
+                      Tooltip(
+                        message: 'Editar cartão',
+                        child: Container(
+                          width: 26,
+                          height: 26,
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.2),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.edit_rounded,
+                            size: 14,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+                  Text(
+                    '••••  ••••  ••••  ${card.lastDigits}',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 2.4,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  _InvoiceUsageBar(spent: spent, limit: card.limitAmount),
+                  const SizedBox(height: 14),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Expanded(
+                        child: _CardInfoLabel(
+                          label: 'Limite',
+                          value: formatCurrencyBRL(card.limitAmount),
+                        ),
+                      ),
+                      _CardInfoLabel(
+                        label: 'Fecha',
+                        value: 'dia ${card.closingDay}',
+                      ),
+                      const SizedBox(width: 18),
+                      _CardInfoLabel(
+                        label: 'Vence',
+                        value: 'dia ${card.dueDay}',
+                      ),
+                    ],
+                  ),
+                ],
               ),
-              _CardInfoLabel(label: 'Fecha', value: 'dia ${card.closingDay}'),
-              const SizedBox(width: 18),
-              _CardInfoLabel(label: 'Vence', value: 'dia ${card.dueDay}'),
-            ],
-          ),
-            ],
+            ),
           ),
         ),
       ),
@@ -1104,7 +1120,12 @@ class _ColorSwatchButton extends StatelessWidget {
               width: 3,
             ),
             boxShadow: selected
-                ? [BoxShadow(color: color.withValues(alpha: 0.6), blurRadius: 10)]
+                ? [
+                    BoxShadow(
+                      color: color.withValues(alpha: 0.6),
+                      blurRadius: 10,
+                    ),
+                  ]
                 : null,
           ),
           child: selected

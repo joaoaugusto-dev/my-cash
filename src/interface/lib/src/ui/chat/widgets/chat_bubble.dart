@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart';
@@ -25,7 +26,10 @@ class ChatBubble extends StatelessWidget {
     // bubble shrinks to fit a short first line — give them a floor so
     // structured content always has room, without widening plain short replies.
     final isMarkdown = !isUser && message.kind == ChatMessageKind.text;
-    final maxBubbleWidth = MediaQuery.sizeOf(context).width * 0.76;
+    final maxBubbleWidth = math.min(
+      MediaQuery.sizeOf(context).width * 0.76,
+      560.0,
+    );
 
     return Align(
       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
@@ -48,9 +52,7 @@ class ChatBubble extends StatelessWidget {
           ),
           border: isUser
               ? null
-              : Border.all(
-                  color: colorScheme.outline.withValues(alpha: 0.5),
-                ),
+              : Border.all(color: colorScheme.outline.withValues(alpha: 0.5)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.end,
@@ -125,7 +127,10 @@ class ChatBubble extends StatelessWidget {
   /// Matches Markdown text to the same look as a plain-text bubble, just
   /// with structure (bold, lists, code, tables...) rendered instead of raw
   /// symbols — colored to fit the assistant bubble in light and dark theme.
-  MarkdownStyleSheet _markdownStyleSheet(BuildContext context, Color textColor) {
+  MarkdownStyleSheet _markdownStyleSheet(
+    BuildContext context,
+    Color textColor,
+  ) {
     final base = TextStyle(color: textColor, fontSize: 15.5, height: 1.3);
 
     return MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
