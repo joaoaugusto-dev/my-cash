@@ -13,6 +13,7 @@ class FinancialTransaction {
     required this.updatedAt,
     this.notes,
     this.source,
+    this.cardId,
   });
 
   final String id;
@@ -24,6 +25,7 @@ class FinancialTransaction {
   final String occurredAt;
   final String? notes;
   final String? source;
+  final String? cardId;
   final String createdAt;
   final String updatedAt;
 
@@ -38,6 +40,7 @@ class FinancialTransaction {
       occurredAt: json['occurredAt'] as String,
       notes: json['notes'] as String?,
       source: json['source'] as String?,
+      cardId: json['cardId'] as String?,
       createdAt: json['createdAt'] as String,
       updatedAt: json['updatedAt'] as String,
     );
@@ -52,6 +55,7 @@ class FinancialTransaction {
       'occurredAt': occurredAt,
       if (notes != null && notes!.trim().isNotEmpty) 'notes': notes,
       if (source != null && source!.trim().isNotEmpty) 'source': source,
+      if (cardId != null) 'cardId': cardId,
     };
   }
 

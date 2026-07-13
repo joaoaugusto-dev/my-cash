@@ -3,7 +3,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
-import 'financial_transaction.dart';
+import 'package:my_cash/src/domain/models/financial_transaction.dart';
 
 class TransactionsApiService {
   TransactionsApiService({
@@ -93,9 +93,8 @@ class TransactionsApiService {
       return;
     }
 
-    throw http.ClientException(
-      'Request failed (${response.statusCode}): ${response.body}',
-      response.request?.url,
+    throw Exception(
+      'Falha na requisição (${response.statusCode}). Tente novamente.',
     );
   }
 

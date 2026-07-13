@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:my_cash/src/widgets/finance_stat_card.dart';
+import 'package:my_cash/src/ui/core/widgets/finance_stat_card.dart';
 
 void main() {
   testWidgets('FinanceStatCard renders title and value', (

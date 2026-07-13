@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'src/app.dart';
-import 'src/auth/oauth_url_sanitizer.dart';
-import 'src/config/app_env.dart';
-import 'src/theme/app_theme_controller.dart';
+import 'package:my_cash/src/utils/oauth_url_sanitizer.dart';
+import 'package:my_cash/src/config/app_env.dart';
+import 'package:my_cash/src/ui/core/theme/app_theme_controller.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -17,12 +16,6 @@ Future<void> main() async {
 }
 
 Future<String?> _bootstrapServices() async {
-  try {
-    await dotenv.load(fileName: '.env');
-  } catch (_) {
-    // .env is optional in production when using --dart-define.
-  }
-
   final validationError = AppEnv.validateBootstrapConfig();
   if (validationError != null) {
     return validationError;

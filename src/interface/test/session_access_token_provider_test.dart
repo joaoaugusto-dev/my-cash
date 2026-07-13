@@ -1,7 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:my_cash/src/auth/session_access_token_provider.dart';
+import 'package:my_cash/src/data/services/session_access_token_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 void main() {

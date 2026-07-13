@@ -9,8 +9,8 @@ import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../config/app_env.dart';
-import 'profile_helpers.dart';
+import 'package:my_cash/src/config/app_env.dart';
+import 'package:my_cash/src/utils/profile_helpers.dart';
 
 class AuthPage extends StatefulWidget {
   const AuthPage({super.key});

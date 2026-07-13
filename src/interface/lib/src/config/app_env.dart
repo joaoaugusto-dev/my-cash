@@ -1,4 +1,3 @@
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter/foundation.dart';
 
 class AppEnv {
@@ -35,22 +34,16 @@ class AppEnv {
         'Defina via --dart-define ou arquivo .env no build.';
   }
 
-  static String get _appEnvironment =>
-      _resolve('APP_ENV') ?? _safeDotEnvGet('APP_ENV') ?? 'development';
+  static String get _appEnvironment => _resolve('APP_ENV') ?? 'development';
 
-  static String? get _supabaseUrl =>
-      _resolve('SUPABASE_URL') ?? _safeDotEnvGet('SUPABASE_URL');
+  static String? get _supabaseUrl => _resolve('SUPABASE_URL');
 
-  static String? get _supabaseAnonKey =>
-      _resolve('SUPABASE_ANON_KEY') ?? _safeDotEnvGet('SUPABASE_ANON_KEY');
+  static String? get _supabaseAnonKey => _resolve('SUPABASE_ANON_KEY');
 
-  static String? get _apiBaseUrl =>
-      _resolve('API_BASE_URL') ?? _safeDotEnvGet('API_BASE_URL');
+  static String? get _apiBaseUrl => _resolve('API_BASE_URL');
 
   static String get _googleWebClientId =>
-      _resolve('GOOGLE_WEB_CLIENT_ID') ??
-      _safeDotEnvGet('GOOGLE_WEB_CLIENT_ID') ??
-      '';
+      _resolve('GOOGLE_WEB_CLIENT_ID') ?? '';
 
   static String? _resolve(String key) {
     switch (key) {
@@ -69,14 +62,6 @@ class AppEnv {
           debugPrint('Unknown config key requested: $key');
         }
         return null;
-    }
-  }
-
-  static String? _safeDotEnvGet(String key) {
-    try {
-      return _sanitize(dotenv.maybeGet(key));
-    } catch (_) {
-      return null;
     }
   }
 

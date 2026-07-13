@@ -3,8 +3,8 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:my_cash/src/finance/financial_transaction.dart';
-import 'package:my_cash/src/finance/transactions_api_service.dart';
+import 'package:my_cash/src/domain/models/financial_transaction.dart';
+import 'package:my_cash/src/data/services/transactions_api_service.dart';
 
 void main() {
   test('fetchDashboard sends auth header and parses summary', () async {

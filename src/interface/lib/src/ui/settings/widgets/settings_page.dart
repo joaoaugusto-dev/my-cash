@@ -6,8 +6,8 @@ import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../theme/app_theme_controller.dart';
-import 'profile_helpers.dart';
+import 'package:my_cash/src/ui/core/theme/app_theme_controller.dart';
+import 'package:my_cash/src/utils/profile_helpers.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({

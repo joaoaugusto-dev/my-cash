@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../theme/app_theme_controller.dart';
-import 'auth_page.dart';
-import 'home_page.dart';
+import 'package:my_cash/src/ui/core/theme/app_theme_controller.dart';
+import 'package:my_cash/src/ui/home/widgets/home_screen.dart';
+import 'package:my_cash/src/ui/auth/widgets/auth_page.dart';
 
 class AuthGate extends StatelessWidget {
   const AuthGate({super.key, required this.themeController});

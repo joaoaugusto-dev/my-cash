@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:my_cash/src/theme/app_theme_controller.dart';
+import 'package:my_cash/src/ui/core/theme/app_theme_controller.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {

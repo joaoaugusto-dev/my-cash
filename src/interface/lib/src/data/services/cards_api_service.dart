@@ -1,0 +1,95 @@
+import 'dart:async';
+import 'dart:convert';
+
+import 'package:http/http.dart' as http;
+
+import 'package:my_cash/src/domain/models/credit_card.dart';
+
+class CardsApiService {
+  CardsApiService({
+    required this.apiBaseUrl,
+    required this.accessTokenProvider,
+    http.Client? client,
+  }) : _client = client ?? http.Client();
+
+  final String apiBaseUrl;
+  final FutureOr<String> Function() accessTokenProvider;
+  final http.Client _client;
+
+  Future<List<CreditCard>> fetchCards() async {
+    final response = await _client.get(
+      _uri('/cards'),
+      headers: await _headers(),
+    );
+    _ensureSuccess(response);
+    final decoded = jsonDecode(response.body) as List<dynamic>;
+    return decoded
+        .map((item) => CreditCard.fromJson(item as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<CreditCard> createCard(CreditCard card) async {
+    final response = await _client.post(
+      _uri('/cards'),
+      headers: await _headers(),
+      body: jsonEncode(card.toCreateJson()),
+    );
+
+    _ensureSuccess(response);
+    return CreditCard.fromJson(
+      jsonDecode(response.body) as Map<String, dynamic>,
+    );
+  }
+
+  Future<CreditCard> updateCard(String id, CreditCard card) async {
+    final response = await _client.patch(
+      _uri('/cards/$id'),
+      headers: await _headers(),
+      body: jsonEncode(card.toCreateJson()),
+    );
+
+    _ensureSuccess(response);
+    return CreditCard.fromJson(
+      jsonDecode(response.body) as Map<String, dynamic>,
+    );
+  }
+
+  Future<void> deleteCard(String id) async {
+    final response = await _client.delete(
+      _uri('/cards/$id'),
+      headers: await _headers(),
+    );
+
+    _ensureSuccess(response);
+  }
+
+  Uri _uri(String path) {
+    final normalizedBaseUrl = apiBaseUrl.endsWith('/')
+        ? apiBaseUrl
+        : '$apiBaseUrl/';
+    final normalizedPath = path.startsWith('/') ? path.substring(1) : path;
+    return Uri.parse(normalizedBaseUrl).resolve(normalizedPath);
+  }
+
+  Future<Map<String, String>> _headers() async {
+    final accessToken = (await accessTokenProvider()).trim();
+    if (accessToken.isEmpty) {
+      throw StateError('Sessão expirada. Faça login novamente.');
+    }
+
+    return {
+      'Authorization': 'Bearer $accessToken',
+      'Content-Type': 'application/json',
+    };
+  }
+
+  void _ensureSuccess(http.Response response) {
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      return;
+    }
+
+    throw Exception(
+      'Falha na requisição (${response.statusCode}). Tente novamente.',
+    );
+  }
+}

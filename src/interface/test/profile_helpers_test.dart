@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:my_cash/src/auth/profile_helpers.dart';
+import 'package:my_cash/src/utils/profile_helpers.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
