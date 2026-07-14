@@ -211,7 +211,11 @@ export class TransactionsService {
     // like a refund, is edited/deleted as one whole purchase — see remove())
     // just gets its fields patched directly, same as before.
     if (!occurrenceDate || anchor.installmentsTotal) {
-      return this.updateFields(authContext, userId, anchor, dto);
+      const patch =
+        occurrenceDate && anchor.installmentsTotal
+          ? this.dropUnchangedDisplayFields(anchor, occurrenceDate, dto)
+          : dto;
+      return this.updateFields(authContext, userId, anchor, patch);
     }
 
     // Editing one occurrence of an open-ended recurring series: split it so
@@ -254,6 +258,32 @@ export class TransactionsService {
     };
 
     return this.create(authContext, userId, splitDto);
+  }
+
+  /**
+   * The client only ever sees an installment occurrence's *expanded* title
+   * ("Compra (2/9)") and split amount (total/9), never the anchor's raw
+   * total — so a save that doesn't touch those fields round-trips the
+   * display values back as if they were edits, corrupting the anchor
+   * (double-suffixed title, re-split amount) on every subsequent read. Drop
+   * any field that matches what was actually displayed for this occurrence.
+   */
+  private dropUnchangedDisplayFields(
+    anchor: Transaction,
+    occurrenceDate: string,
+    dto: UpdateTransactionDto,
+  ): UpdateTransactionDto {
+    const at = new Date(occurrenceDate);
+    const [occurrence] = expandRecurrence(anchor, {
+      start: at,
+      end: new Date(at.getTime() + 1),
+    });
+    if (!occurrence) return dto;
+
+    const patch = { ...dto };
+    if (patch.title === occurrence.title) delete patch.title;
+    if (patch.amount === occurrence.amount) delete patch.amount;
+    return patch;
   }
 
   private async updateFields(

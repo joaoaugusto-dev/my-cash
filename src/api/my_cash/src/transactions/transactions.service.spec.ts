@@ -117,7 +117,6 @@ describe('TransactionsService', () => {
       lastDigits: '1234',
       limitAmount: 5000,
       closingDay: 10,
-      dueDay: 17,
     });
 
     const created = await service.create(authContext, 'user-1', {
@@ -400,6 +399,42 @@ describe('TransactionsService', () => {
     ).resolves.toHaveLength(0);
   });
 
+  it('editing an installment occurrence without touching title/amount does not re-split them', async () => {
+    await service.create(authContext, 'user-1', {
+      title: 'Notebook',
+      amount: 3000,
+      type: TransactionType.EXPENSE,
+      category: 'Compras',
+      occurredAt: '2026-01-10T00:00:00.000Z',
+      installmentsTotal: 3,
+    });
+
+    const january = (
+      await service.findAll(authContext, 'user-1', undefined, '2026-01')
+    )[0];
+    expect(january.title).toBe('Notebook (1/3)');
+    expect(january.amount).toBe(1000);
+
+    // Simulates the composer prefilling from the expanded occurrence and
+    // resubmitting it unchanged while only the category is edited.
+    await service.update(authContext, 'user-1', january.id, {
+      title: january.title,
+      amount: january.amount,
+      category: 'Eletrônicos',
+    });
+
+    const [reloadedJanuary, reloadedFebruary] = await Promise.all([
+      service.findAll(authContext, 'user-1', undefined, '2026-01'),
+      service.findAll(authContext, 'user-1', undefined, '2026-02'),
+    ]);
+
+    expect(reloadedJanuary[0].title).toBe('Notebook (1/3)');
+    expect(reloadedJanuary[0].amount).toBe(1000);
+    expect(reloadedJanuary[0].category).toBe('Eletrônicos');
+    expect(reloadedFebruary[0].title).toBe('Notebook (2/3)');
+    expect(reloadedFebruary[0].amount).toBe(1000);
+  });
+
   it('splits an odd total so the remainder lands on the last installment', async () => {
     await service.create(authContext, 'user-1', {
       title: 'Presente',
@@ -442,7 +477,6 @@ describe('TransactionsService', () => {
       lastDigits: '4321',
       limitAmount: 3000,
       closingDay: 5,
-      dueDay: 12,
     });
 
     await expect(
