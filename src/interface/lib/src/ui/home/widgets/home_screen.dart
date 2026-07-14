@@ -14,8 +14,8 @@ import '../../core/widgets/finance_background.dart';
 import '../../core/widgets/finance_stat_card.dart';
 import '../../chat/widgets/chat_page.dart';
 import '../../transactions/widgets/transaction_composer_sheet.dart';
-import '../../transactions/widgets/transaction_detail_sheet.dart';
 import '../../transactions/widgets/transactions_list_page.dart';
+import '../../transactions/widgets/transactions_list_widgets.dart';
 import '../category_summary.dart';
 import '../view_model/home_view_model.dart';
 import 'ai_insight_card.dart';
@@ -185,7 +185,7 @@ class _HomeViewState extends State<_HomeView> {
           child: TransactionComposerSheet(
             cards: cards,
             spentByCardId: vm.spentByCardId,
-            onSubmit: (transaction) async {
+            onSubmit: (transaction, {scope}) async {
               await vm.createTransaction(transaction);
             },
           ),
@@ -196,7 +196,6 @@ class _HomeViewState extends State<_HomeView> {
     if (created == true && mounted) {
       vm.refreshDashboard();
       vm.loadCardSpendTransactions();
-      vm.listRefreshTrigger.value++;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Lançamento salvo com sucesso.')),
       );
@@ -231,8 +230,24 @@ class _HomeViewState extends State<_HomeView> {
   }
 
   Future<void> _handleDelete(String id) async {
+    final tx = _vm.cachedDashboard?.transactions
+        .where((t) => t.id == id)
+        .firstOrNull;
+
+    String? scope;
+    if (tx?.installmentsTotal != null) {
+      final confirmed = await showInstallmentDeleteConfirmDialog(context);
+      if (!confirmed || !mounted) return;
+    } else if (tx?.isRecurring ?? false) {
+      scope = await showRecurringDeleteScopeDialog(context);
+      if (scope == null || !mounted) return;
+    } else {
+      final confirmed = await showDeleteConfirmDialog(context);
+      if (!confirmed || !mounted) return;
+    }
+
     try {
-      await _vm.deleteTransaction(id);
+      await _vm.deleteTransaction(id, scope: scope);
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -258,18 +273,37 @@ class _HomeViewState extends State<_HomeView> {
     }
   }
 
-  void _showTransactionDetail(
-    BuildContext callerContext,
-    FinancialTransaction tx,
-  ) {
-    showGeneralDialog(
-      context: callerContext,
-      barrierDismissible: true,
-      barrierLabel: 'Fechar detalhes',
-      pageBuilder: (context, animation, secondaryAnimation) =>
-          TransactionDetailSheet(transaction: tx),
-      transitionDuration: const Duration(milliseconds: 300),
+  Future<void> _openEditTransactionSheet(FinancialTransaction tx) async {
+    final vm = _vm;
+    final cards = await vm.cardsFuture ?? const [];
+    if (!mounted) return;
+
+    final updated = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return RepaintBoundary(
+          child: TransactionComposerSheet(
+            initialTransaction: tx,
+            cards: cards,
+            spentByCardId: vm.spentByCardId,
+            onSubmit: (transaction, {scope}) async {
+              await vm.updateTransaction(transaction, scope: scope);
+            },
+          ),
+        );
+      },
     );
+
+    if (updated == true && mounted) {
+      vm.refreshDashboard();
+      vm.loadCardSpendTransactions();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Lançamento atualizado com sucesso.')),
+      );
+    }
   }
 
   @override
@@ -406,6 +440,8 @@ class _HomeViewState extends State<_HomeView> {
                               onPrevious: vm.goToPreviousPeriod,
                               onNext: vm.goToNextPeriod,
                               onTapPeriod: _showPeriodPicker,
+                              showTodayButton: !vm.isCurrentPeriod,
+                              onTapToday: vm.goToCurrentPeriod,
                             ),
                           ),
                           const SizedBox(height: 20),
@@ -487,7 +523,7 @@ class _HomeViewState extends State<_HomeView> {
                                     onDelete: _handleDelete,
                                     onViewAll: () => _handleNavSelection(1),
                                     onViewTransaction: (tx) =>
-                                        _showTransactionDetail(context, tx),
+                                        _openEditTransactionSheet(tx),
                                     deletingIds: vm.deletingIds,
                                     removingIds: vm.removingIds,
                                   ),
@@ -507,11 +543,7 @@ class _HomeViewState extends State<_HomeView> {
                   ),
                 ),
               ),
-              TransactionsListPage(
-                apiService: vm.apiService,
-                refreshTrigger: vm.listRefreshTrigger,
-                onDataChanged: vm.loadDashboard,
-              ),
+              const TransactionsListPage(),
               CardsPage(
                 apiService: vm.cardsApiService,
                 refreshTrigger: vm.cardsRefreshTrigger,

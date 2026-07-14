@@ -1,6 +1,112 @@
 import 'package:flutter/material.dart';
 
 import 'package:my_cash/src/domain/models/financial_transaction.dart';
+import '../../core/theme/app_theme.dart';
+
+/// Confirms a one-off deletion. Returns true to proceed, false/null to cancel.
+Future<bool> showDeleteConfirmDialog(BuildContext context) async {
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Excluir lançamento'),
+      content: const Text('Tem certeza que deseja excluir esse lançamento?'),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(true),
+          child: const Text('Excluir'),
+        ),
+      ],
+    ),
+  );
+  return confirmed ?? false;
+}
+
+/// Asks how much of a recurring series to delete, like Google Calendar does
+/// for recurring events. Returns 'this', 'forward', or null if cancelled.
+Future<String?> showRecurringDeleteScopeDialog(BuildContext context) {
+  return showDialog<String>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Excluir lançamento recorrente'),
+      content: const Text('Esse lançamento se repete. O que deseja excluir?'),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancelar'),
+        ),
+        TextButton(
+          onPressed: () => Navigator.of(context).pop('this'),
+          child: const Text('Somente este mês'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop('forward'),
+          child: const Text('Este mês e os seguintes'),
+        ),
+      ],
+    ),
+  );
+}
+
+/// Asks how much of a recurring series to EDIT (past occurrences are always
+/// left untouched, this only decides how far into the future the change
+/// reaches). Returns 'this', 'forward', or null if cancelled.
+Future<String?> showRecurringEditScopeDialog(BuildContext context) {
+  return showDialog<String>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Editar lançamento recorrente'),
+      content: const Text(
+        'Esse lançamento se repete. Os meses anteriores não serão alterados. '
+        'O que deseja editar?',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancelar'),
+        ),
+        TextButton(
+          onPressed: () => Navigator.of(context).pop('this'),
+          child: const Text('Somente este mês'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop('forward'),
+          child: const Text('Este mês e os seguintes'),
+        ),
+      ],
+    ),
+  );
+}
+
+/// Installments are one purchase, not independent events — deleting any
+/// parcela reverses the whole thing, past parcelas included, like a refund.
+/// Returns true to proceed, false/null to cancel.
+Future<bool> showInstallmentDeleteConfirmDialog(BuildContext context) async {
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Excluir compra parcelada'),
+      content: const Text(
+        'Essa é uma compra parcelada. Excluir removerá TODAS as parcelas, '
+        'inclusive as já pagas, como um estorno. Deseja continuar?',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(true),
+          child: const Text('Excluir tudo'),
+        ),
+      ],
+    ),
+  );
+  return confirmed ?? false;
+}
 
 class FilterBar extends StatelessWidget {
   const FilterBar({super.key, required this.selected, required this.onChanged});
@@ -38,7 +144,7 @@ class FilterBar extends StatelessWidget {
                   )
                 : null,
             color: isActive ? null : colorScheme.surface.withValues(alpha: 0.7),
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(AppRadii.md),
             border: Border.all(
               color: isActive
                   ? Colors.white.withValues(alpha: 0.18)
@@ -193,124 +299,136 @@ class TransactionListRow extends StatelessWidget {
           ),
         );
       },
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          margin: const EdgeInsets.only(bottom: 6),
-          decoration: BoxDecoration(
-            color: colorScheme.surface.withValues(alpha: 0.72),
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(
-              color: colorScheme.outline.withValues(alpha: 0.42),
-            ),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 6),
+        decoration: BoxDecoration(
+          color: colorScheme.surface.withValues(alpha: 0.72),
+          borderRadius: BorderRadius.circular(AppRadii.md),
+          border: Border.all(
+            color: colorScheme.outline.withValues(alpha: 0.42),
           ),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(14, 12, 6, 12),
-            child: Row(
-              children: [
-                Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.15),
-                    shape: BoxShape.circle,
+        ),
+        child: Material(
+          color: Colors.transparent,
+          borderRadius: BorderRadius.circular(AppRadii.md),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(AppRadii.md),
+            onTap: onTap,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(14, 12, 6, 12),
+              child: Row(
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: color.withValues(alpha: 0.15),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      isIncome
+                          ? Icons.arrow_downward_rounded
+                          : Icons.arrow_upward_rounded,
+                      size: 22,
+                      color: color,
+                    ),
                   ),
-                  child: Icon(
-                    isIncome
-                        ? Icons.arrow_downward_rounded
-                        : Icons.arrow_upward_rounded,
-                    size: 22,
-                    color: color,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        transaction.title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w900,
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          transaction.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.titleSmall
+                              ?.copyWith(fontWeight: FontWeight.w900),
                         ),
-                      ),
-                      const SizedBox(height: 3),
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.sell_rounded,
-                            size: 12,
-                            color: colorScheme.onSurface.withValues(alpha: 0.5),
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            transaction.category,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.bodySmall
-                                ?.copyWith(
-                                  color: colorScheme.onSurface.withValues(
-                                    alpha: 0.56,
-                                  ),
-                                  fontWeight: FontWeight.w600,
-                                ),
-                          ),
-                          if ((transaction.notes ?? '').isNotEmpty) ...[
-                            const SizedBox(width: 8),
+                        const SizedBox(height: 3),
+                        Row(
+                          children: [
                             Icon(
-                              Icons.info_outline_rounded,
+                              Icons.sell_rounded,
                               size: 12,
                               color: colorScheme.onSurface.withValues(
-                                alpha: 0.4,
+                                alpha: 0.5,
                               ),
                             ),
+                            const SizedBox(width: 4),
+                            Text(
+                              transaction.category,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(
+                                    color: colorScheme.onSurface.withValues(
+                                      alpha: 0.56,
+                                    ),
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                            ),
+                            if ((transaction.notes ?? '').isNotEmpty) ...[
+                              const SizedBox(width: 8),
+                              Icon(
+                                Icons.info_outline_rounded,
+                                size: 12,
+                                color: colorScheme.onSurface.withValues(
+                                  alpha: 0.4,
+                                ),
+                              ),
+                            ],
                           ],
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  '$sign${formatCurrency(transaction.amount)}',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    color: color,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-                const SizedBox(width: 4),
-                AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  width: 36,
-                  height: 36,
-                  child: isDeleting
-                      ? Center(
-                          child: SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: colorScheme.primary,
-                            ),
-                          ),
-                        )
-                      : IconButton(
-                          tooltip: 'Excluir',
-                          visualDensity: VisualDensity.compact,
-                          padding: EdgeInsets.zero,
-                          onPressed: onDelete,
-                          icon: Icon(
-                            Icons.delete_outline_rounded,
-                            size: 20,
-                            color: colorScheme.onSurface.withValues(
-                              alpha: 0.38,
-                            ),
-                          ),
                         ),
-                ),
-              ],
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    '$sign${formatCurrency(transaction.amount)}',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      color: color,
+                      fontWeight: FontWeight.w900,
+                      fontFeatures: tabularFigures,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    width: 36,
+                    height: 36,
+                    child: isDeleting
+                        ? Center(
+                            child: SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: colorScheme.primary,
+                              ),
+                            ),
+                          )
+                        : IconButton(
+                            tooltip: 'Excluir',
+                            visualDensity: VisualDensity.compact,
+                            padding: EdgeInsets.zero,
+                            onPressed: onDelete,
+                            icon: Icon(
+                              Icons.delete_outline_rounded,
+                              size: 20,
+                              color: colorScheme.onSurface.withValues(
+                                alpha: 0.38,
+                              ),
+                            ),
+                          ),
+                  ),
+                  Icon(
+                    Icons.edit_outlined,
+                    size: 16,
+                    color: colorScheme.onSurface.withValues(alpha: 0.28),
+                  ),
+                ],
+              ),
             ),
           ),
         ),

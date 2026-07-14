@@ -132,6 +132,309 @@ describe('TransactionsService', () => {
     expect(created.cardId).toBe(card.id);
   });
 
+  it('shows a recurring transaction as an occurrence in every following month', async () => {
+    await service.create(authContext, 'user-1', {
+      title: 'Aluguel',
+      amount: 1500,
+      type: TransactionType.EXPENSE,
+      category: 'Moradia',
+      occurredAt: '2026-01-05T00:00:00.000Z',
+      recurrenceFrequency: 'monthly',
+    });
+
+    const july = await service.findAll(
+      authContext,
+      'user-1',
+      undefined,
+      '2026-07',
+    );
+
+    expect(july).toHaveLength(1);
+    expect(july[0].occurredAt).toBe('2026-07-05T00:00:00.000Z');
+    expect(july[0].seriesId).toBeTruthy();
+  });
+
+  it('deleting "only this month" removes just that occurrence', async () => {
+    await service.create(authContext, 'user-1', {
+      title: 'Aluguel',
+      amount: 1500,
+      type: TransactionType.EXPENSE,
+      category: 'Moradia',
+      occurredAt: '2026-01-05T00:00:00.000Z',
+      recurrenceFrequency: 'monthly',
+    });
+
+    const july = await service.findAll(
+      authContext,
+      'user-1',
+      undefined,
+      '2026-07',
+    );
+    await service.remove(authContext, 'user-1', july[0].id, 'this');
+
+    await expect(
+      service.findAll(authContext, 'user-1', undefined, '2026-07'),
+    ).resolves.toHaveLength(0);
+    await expect(
+      service.findAll(authContext, 'user-1', undefined, '2026-08'),
+    ).resolves.toHaveLength(1);
+  });
+
+  it('deleting "this month forward" stops all future occurrences', async () => {
+    await service.create(authContext, 'user-1', {
+      title: 'Aluguel',
+      amount: 1500,
+      type: TransactionType.EXPENSE,
+      category: 'Moradia',
+      occurredAt: '2026-01-05T00:00:00.000Z',
+      recurrenceFrequency: 'monthly',
+    });
+
+    const july = await service.findAll(
+      authContext,
+      'user-1',
+      undefined,
+      '2026-07',
+    );
+    await service.remove(authContext, 'user-1', july[0].id, 'forward');
+
+    await expect(
+      service.findAll(authContext, 'user-1', undefined, '2026-06'),
+    ).resolves.toHaveLength(1);
+    await expect(
+      service.findAll(authContext, 'user-1', undefined, '2026-07'),
+    ).resolves.toHaveLength(0);
+    await expect(
+      service.findAll(authContext, 'user-1', undefined, '2026-08'),
+    ).resolves.toHaveLength(0);
+  });
+
+  it('deletes the anchor once forward-deletion plus exceptions empty out the series', async () => {
+    await service.create(authContext, 'user-1', {
+      title: 'Aluguel',
+      amount: 1500,
+      type: TransactionType.EXPENSE,
+      category: 'Moradia',
+      occurredAt: '2026-01-05T00:00:00.000Z',
+      recurrenceFrequency: 'monthly',
+    });
+
+    // Forward-delete from March on, leaving only Jan and Feb.
+    const march = (
+      await service.findAll(authContext, 'user-1', undefined, '2026-03')
+    )[0];
+    await service.remove(authContext, 'user-1', march.id, 'forward');
+
+    // Delete Jan and Feb individually ("this month" scope) — nothing left.
+    const jan = (
+      await service.findAll(authContext, 'user-1', undefined, '2026-01')
+    )[0];
+    await service.remove(authContext, 'user-1', jan.id, 'this');
+    const feb = (
+      await service.findAll(authContext, 'user-1', undefined, '2026-02')
+    )[0];
+    await service.remove(authContext, 'user-1', feb.id, 'this');
+
+    await expect(
+      service.findAll(authContext, 'user-1', undefined, '2026-01'),
+    ).resolves.toHaveLength(0);
+    // The anchor itself should be gone, not just its occurrences — findOne
+    // on any bare id derived from it would 404 too, but the simplest check
+    // is that a full year scan is empty.
+    await expect(
+      service.findAll(authContext, 'user-1', undefined, '2026'),
+    ).resolves.toHaveLength(0);
+  });
+
+  it('editing a recurring occurrence with "this" scope keeps past months untouched', async () => {
+    await service.create(authContext, 'user-1', {
+      title: 'Aluguel',
+      amount: 1500,
+      type: TransactionType.EXPENSE,
+      category: 'Moradia',
+      occurredAt: '2026-01-05T00:00:00.000Z',
+      recurrenceFrequency: 'monthly',
+    });
+
+    const july = (
+      await service.findAll(authContext, 'user-1', undefined, '2026-07')
+    )[0];
+    await service.update(
+      authContext,
+      'user-1',
+      july.id,
+      { amount: 1800 },
+      'this',
+    );
+
+    const january = (
+      await service.findAll(authContext, 'user-1', undefined, '2026-01')
+    )[0];
+    const newJuly = (
+      await service.findAll(authContext, 'user-1', undefined, '2026-07')
+    )[0];
+    const august = (
+      await service.findAll(authContext, 'user-1', undefined, '2026-08')
+    )[0];
+
+    expect(january.amount).toBe(1500);
+    expect(newJuly.amount).toBe(1800);
+    expect(newJuly.seriesId).toBeUndefined(); // now a standalone transaction
+    expect(august.amount).toBe(1500);
+  });
+
+  it('editing a recurring occurrence with "forward" scope keeps past months untouched', async () => {
+    await service.create(authContext, 'user-1', {
+      title: 'Aluguel',
+      amount: 1500,
+      type: TransactionType.EXPENSE,
+      category: 'Moradia',
+      occurredAt: '2026-01-05T00:00:00.000Z',
+      recurrenceFrequency: 'monthly',
+    });
+
+    const july = (
+      await service.findAll(authContext, 'user-1', undefined, '2026-07')
+    )[0];
+    await service.update(
+      authContext,
+      'user-1',
+      july.id,
+      { amount: 1800 },
+      'forward',
+    );
+
+    const june = (
+      await service.findAll(authContext, 'user-1', undefined, '2026-06')
+    )[0];
+    const newJuly = (
+      await service.findAll(authContext, 'user-1', undefined, '2026-07')
+    )[0];
+    const august = (
+      await service.findAll(authContext, 'user-1', undefined, '2026-08')
+    )[0];
+
+    expect(june.amount).toBe(1500);
+    expect(newJuly.amount).toBe(1800);
+    expect(august.amount).toBe(1800);
+  });
+
+  it('deleting any installment removes the whole purchase, past parcelas included', async () => {
+    await service.create(authContext, 'user-1', {
+      title: 'Notebook',
+      amount: 3000,
+      type: TransactionType.EXPENSE,
+      category: 'Compras',
+      occurredAt: '2026-01-10T00:00:00.000Z',
+      installmentsTotal: 3,
+    });
+
+    const february = (
+      await service.findAll(authContext, 'user-1', undefined, '2026-02')
+    )[0];
+    await service.remove(authContext, 'user-1', february.id, 'this');
+
+    await expect(
+      service.findAll(authContext, 'user-1', undefined, '2026-01'),
+    ).resolves.toHaveLength(0);
+    await expect(
+      service.findAll(authContext, 'user-1', undefined, '2026-03'),
+    ).resolves.toHaveLength(0);
+  });
+
+  it('turning recurrence off via update stops future occurrences', async () => {
+    const created = await service.create(authContext, 'user-1', {
+      title: 'Aluguel',
+      amount: 1500,
+      type: TransactionType.EXPENSE,
+      category: 'Moradia',
+      occurredAt: '2026-01-05T00:00:00.000Z',
+      recurrenceFrequency: 'monthly',
+    });
+
+    await service.update(authContext, 'user-1', created.id, {
+      recurrenceFrequency: null,
+    });
+
+    await expect(
+      service.findAll(authContext, 'user-1', undefined, '2026-07'),
+    ).resolves.toHaveLength(0);
+    await expect(
+      service.findAll(authContext, 'user-1', undefined, '2026-01'),
+    ).resolves.toHaveLength(1);
+  });
+
+  it('stores an installment purchase as a single row split across months', async () => {
+    const created = await service.create(authContext, 'user-1', {
+      title: 'Notebook',
+      amount: 3000,
+      type: TransactionType.EXPENSE,
+      category: 'Compras',
+      occurredAt: '2026-01-10T00:00:00.000Z',
+      installmentsTotal: 3,
+    });
+
+    expect(created.installmentsTotal).toBe(3);
+    expect(created.recurrenceFrequency).toBe('monthly');
+
+    const january = await service.findAll(
+      authContext,
+      'user-1',
+      undefined,
+      '2026-01',
+    );
+    expect(january).toHaveLength(1);
+    expect(january[0].amount).toBe(1000);
+    expect(january[0].title).toBe('Notebook (1/3)');
+
+    const march = await service.findAll(
+      authContext,
+      'user-1',
+      undefined,
+      '2026-03',
+    );
+    expect(march[0].title).toBe('Notebook (3/3)');
+
+    await expect(
+      service.findAll(authContext, 'user-1', undefined, '2026-04'),
+    ).resolves.toHaveLength(0);
+  });
+
+  it('splits an odd total so the remainder lands on the last installment', async () => {
+    await service.create(authContext, 'user-1', {
+      title: 'Presente',
+      amount: 100,
+      type: TransactionType.EXPENSE,
+      category: 'Compras',
+      occurredAt: '2026-01-10T00:00:00.000Z',
+      installmentsTotal: 3,
+    });
+
+    const amounts = [
+      (await service.findAll(authContext, 'user-1', undefined, '2026-01'))[0]
+        .amount,
+      (await service.findAll(authContext, 'user-1', undefined, '2026-02'))[0]
+        .amount,
+      (await service.findAll(authContext, 'user-1', undefined, '2026-03'))[0]
+        .amount,
+    ];
+
+    expect(amounts).toEqual([33.33, 33.33, 33.34]);
+  });
+
+  it('rejects an installmentsTotal outside the 2-36 range', async () => {
+    await expect(
+      service.create(authContext, 'user-1', {
+        title: 'Notebook',
+        amount: 3000,
+        type: TransactionType.EXPENSE,
+        category: 'Compras',
+        occurredAt: '2026-01-10T00:00:00.000Z',
+        installmentsTotal: 1,
+      }),
+    ).rejects.toThrow(BadRequestException);
+  });
+
   it('rejects a cardId that does not belong to the requesting user', async () => {
     const otherUsersCard = await cardsService.create(authContext, 'user-2', {
       name: 'Inter',

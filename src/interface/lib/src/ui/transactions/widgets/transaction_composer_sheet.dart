@@ -1,5 +1,3 @@
-import 'dart:ui' as ui;
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -8,10 +6,11 @@ import 'package:my_cash/src/domain/models/card_recommendation.dart';
 import 'package:my_cash/src/ui/cards/widgets/cards_page.dart';
 import 'package:my_cash/src/domain/models/credit_card.dart';
 import 'package:my_cash/src/domain/models/financial_transaction.dart';
-import 'package:my_cash/src/domain/models/installments.dart';
 import 'package:my_cash/src/ui/core/widgets/composer_widgets.dart';
+import '../../core/theme/app_theme.dart';
 import '../../core/widgets/picker_sheet_wrapper.dart';
 import '../../core/widgets/wheel_number_picker_grid.dart';
+import 'transactions_list_widgets.dart';
 
 class TransactionComposerSheet extends StatefulWidget {
   const TransactionComposerSheet({
@@ -19,11 +18,18 @@ class TransactionComposerSheet extends StatefulWidget {
     required this.onSubmit,
     this.cards = const [],
     this.spentByCardId = const {},
+    this.initialTransaction,
   });
 
-  final Future<void> Function(FinancialTransaction transaction) onSubmit;
+  /// [scope] is only meaningful when editing a recurring (non-installment)
+  /// occurrence: 'this' or 'forward', mirroring the delete-scope dialog.
+  final Future<void> Function(FinancialTransaction transaction, {String? scope})
+  onSubmit;
   final List<CreditCard> cards;
   final Map<String, double> spentByCardId;
+
+  /// When set, the sheet edits this transaction instead of creating a new one.
+  final FinancialTransaction? initialTransaction;
 
   @override
   State<TransactionComposerSheet> createState() =>
@@ -51,11 +57,48 @@ class _TransactionComposerSheetState extends State<TransactionComposerSheet> {
   bool _isInstallment = false;
   bool _isSaving = false;
 
+  bool get _isEditing => widget.initialTransaction != null;
+
   @override
   void initState() {
     super.initState();
+    _prefillFromInitialTransaction();
     _syncDateText();
     _amountFocusNode.addListener(_syncAmountCursorToEnd);
+  }
+
+  void _prefillFromInitialTransaction() {
+    final initial = widget.initialTransaction;
+    if (initial == null) return;
+
+    _type = initial.type;
+    _occurredAt = DateTime.parse(initial.occurredAt).toLocal();
+    _categoryController.text = initial.category;
+    _descriptionController.text = initial.title;
+    _amountController.value = CurrencyInputFormatter().formatEditUpdate(
+      TextEditingValue.empty,
+      TextEditingValue(text: (initial.amount * 100).round().toString()),
+    );
+
+    final sourceParts = (initial.source ?? '').split('•').map((e) => e.trim());
+    final paymentLabel = sourceParts.isEmpty ? '' : sourceParts.first;
+    final matchedPayment = _paymentOptions
+        .where((option) => option.label == paymentLabel)
+        .firstOrNull;
+    if (matchedPayment != null) {
+      _paymentMethod = matchedPayment.value;
+      _paymentMethodController.text = matchedPayment.label;
+      if (_isCardPayment && sourceParts.length > 1) {
+        final cardName = sourceParts.last;
+        final matchedCard = widget.cards
+            .where((card) => card.name == cardName)
+            .firstOrNull;
+        if (matchedCard != null) {
+          _selectedCard = matchedCard;
+          _cardController.text = matchedCard.name;
+        }
+      }
+    }
   }
 
   List<SheetOption<String>> get _categoryOptions {
@@ -173,7 +216,7 @@ class _TransactionComposerSheetState extends State<TransactionComposerSheet> {
       ),
       SheetOption(
         value: _TransactionPaymentMethod.credit,
-        label: 'Cartão',
+        label: 'Crédito',
         icon: Icons.credit_card_rounded,
       ),
       SheetOption(
@@ -381,16 +424,13 @@ class _TransactionComposerSheetState extends State<TransactionComposerSheet> {
     if (_isCardPayment && _isInstallment) {
       details.add('Parcelado em ${_installmentsCount()}x');
     }
-    if (_isRecurring) {
-      if (_recurrence == _TransactionRecurrence.custom) {
-        details.add(
-          'Recorrência a cada ${_customRecurrenceIntervalController.text.trim()} ${_customRecurrenceUnit.label.toLowerCase()}',
-        );
-      } else {
-        details.add('Recorrência ${_recurrence.label.toLowerCase()}');
-      }
-    }
     return details.join(' • ');
+  }
+
+  // The field shows "N vezes" instead of a bare number for installments;
+  // this one is a bare integer, no formatting to strip.
+  int _customRecurrenceInterval() {
+    return int.tryParse(_customRecurrenceIntervalController.text.trim()) ?? 1;
   }
 
   double _parseAmountValue() {
@@ -406,14 +446,24 @@ class _TransactionComposerSheetState extends State<TransactionComposerSheet> {
       return;
     }
 
+    // Editing one occurrence of a genuinely recurring (not installment)
+    // series needs the user to say how far the change should reach — past
+    // months are never touched either way.
+    String? scope;
+    final initial = widget.initialTransaction;
+    if (initial != null &&
+        initial.isRecurring &&
+        initial.installmentsTotal == null) {
+      scope = await showRecurringEditScopeDialog(context);
+      if (scope == null || !mounted) return;
+    }
+
     setState(() {
       _isSaving = true;
     });
 
     try {
-      for (final transaction in _buildTransactions()) {
-        await widget.onSubmit(transaction);
-      }
+      await widget.onSubmit(_buildTransaction(), scope: scope);
 
       if (mounted) {
         Navigator.of(context).pop(true);
@@ -433,9 +483,10 @@ class _TransactionComposerSheetState extends State<TransactionComposerSheet> {
     }
   }
 
-  /// One transaction, or one per installment (each dated a month apart) when
-  /// paying by card with parcelas enabled — so future months already show them.
-  List<FinancialTransaction> _buildTransactions() {
+  /// Always a single transaction — recurring series and installment
+  /// purchases are stored as one anchor row and expanded server-side, never
+  /// materialized as N rows client-side.
+  FinancialTransaction _buildTransaction() {
     final now = DateTime.now().toUtc().toIso8601String();
     final notes = _buildNotes();
     final source = _buildSource();
@@ -445,528 +496,443 @@ class _TransactionComposerSheetState extends State<TransactionComposerSheet> {
     final title = description.isEmpty ? category : description;
     final totalAmount = _parseAmountValue();
 
-    final installmentCount = _isCardPayment && _isInstallment
-        ? _installmentsCount()
-        : 1;
-    final amounts = splitIntoInstallments(totalAmount, installmentCount);
+    final initial = widget.initialTransaction;
+    if (initial != null) {
+      // Recurrence/installments aren't editable from here (see the ladder
+      // note on the hidden "Recorrente" panel above) — echo them back as-is.
+      return FinancialTransaction(
+        id: initial.id,
+        userId: initial.userId,
+        title: title,
+        amount: totalAmount,
+        type: _type,
+        category: category,
+        occurredAt: _occurredAt.toUtc().toIso8601String(),
+        notes: notes.isEmpty ? null : notes,
+        source: source.isEmpty ? null : source,
+        cardId: cardId,
+        createdAt: initial.createdAt,
+        updatedAt: now,
+        recurrenceFrequency: initial.recurrenceFrequency,
+        recurrenceInterval: initial.recurrenceInterval,
+        recurrenceUnit: initial.recurrenceUnit,
+        installmentsTotal: initial.installmentsTotal,
+      );
+    }
 
-    return [
-      for (var i = 0; i < amounts.length; i++)
-        FinancialTransaction(
-          id: 'pending',
-          userId: 'pending',
-          title: amounts.length > 1
-              ? '$title (${i + 1}/${amounts.length})'
-              : title,
-          amount: amounts[i],
-          type: _type,
-          category: category,
-          occurredAt: DateTime(
-            _occurredAt.year,
-            _occurredAt.month + i,
-            _occurredAt.day,
-          ).toUtc().toIso8601String(),
-          notes: notes.isEmpty ? null : notes,
-          source: source.isEmpty ? null : source,
-          cardId: cardId,
-          createdAt: now,
-          updatedAt: now,
-        ),
-    ];
+    final isInstallment = _isCardPayment && _isInstallment;
+
+    return FinancialTransaction(
+      id: 'pending',
+      userId: 'pending',
+      title: title,
+      amount: totalAmount,
+      type: _type,
+      category: category,
+      occurredAt: _occurredAt.toUtc().toIso8601String(),
+      notes: notes.isEmpty ? null : notes,
+      source: source.isEmpty ? null : source,
+      cardId: cardId,
+      createdAt: now,
+      updatedAt: now,
+      installmentsTotal: isInstallment ? _installmentsCount() : null,
+      recurrenceFrequency: !isInstallment && _isRecurring
+          ? _recurrence.name
+          : null,
+      recurrenceInterval: !isInstallment && _isRecurring
+          ? (_recurrence == _TransactionRecurrence.custom
+                ? _customRecurrenceInterval()
+                : 1)
+          : null,
+      recurrenceUnit:
+          !isInstallment &&
+              _isRecurring &&
+              _recurrence == _TransactionRecurrence.custom
+          ? _customRecurrenceUnit.name
+          : null,
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
 
-    return Padding(
-      padding: EdgeInsets.only(bottom: bottomInset),
-      child: ClipRRect(
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(34)),
-        child: BackdropFilter(
-          filter: ui.ImageFilter.blur(sigmaX: 22, sigmaY: 22),
-          child: Container(
-            decoration: BoxDecoration(
-              color: colorScheme.surface.withValues(
-                alpha: isDark ? 0.86 : 0.82,
+    return ComposerSheetShell(
+      title: _isEditing ? 'Editar transação' : 'Nova transação',
+      subtitle: _isEditing
+          ? 'Atualize os dados do lançamento.'
+          : 'Rápido, limpo e no estilo do app.',
+      onClose: () => Navigator.of(context).pop(false),
+      formKey: _formKey,
+      children: [
+        _ComposerTypeSwitcher(
+          type: _type,
+          onChanged: (type) {
+            setState(() {
+              _type = type;
+              if (!_categoryOptions.any(
+                (option) => option.value == _categoryController.text.trim(),
+              )) {
+                _categoryController.clear();
+              }
+              if (_paymentMethod != null &&
+                  !_paymentOptions.any(
+                    (option) => option.value == _paymentMethod,
+                  )) {
+                _paymentMethod = null;
+                _paymentMethodController.clear();
+                _cardController.clear();
+                _selectedCard = null;
+                _isInstallment = false;
+                _installmentsController.text = '1';
+              }
+            });
+          },
+        ),
+        const SizedBox(height: 16),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 4),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    'R\$',
+                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                      color: colorScheme.onSurface,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: -0.8,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: TextFormField(
+                      controller: _amountController,
+                      focusNode: _amountFocusNode,
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [CurrencyInputFormatter()],
+                      onTap: _syncAmountCursorToEnd,
+                      textAlign: TextAlign.left,
+                      textAlignVertical: TextAlignVertical.center,
+                      style: Theme.of(context).textTheme.headlineMedium
+                          ?.copyWith(
+                            color: colorScheme.onSurface,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: -0.8,
+                            fontFeatures: tabularFigures,
+                          ),
+                      decoration: const InputDecoration(
+                        hintText: '0,00',
+                        border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        errorBorder: InputBorder.none,
+                        focusedErrorBorder: InputBorder.none,
+                        disabledBorder: InputBorder.none,
+                        filled: false,
+                        isDense: true,
+                        isCollapsed: true,
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                      validator: (value) {
+                        if (_parseAmountValue() <= 0) {
+                          return 'Informe um valor válido';
+                        }
+                        return null;
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Icon(
+                    Icons.calculate_rounded,
+                    size: 20,
+                    color: colorScheme.primary,
+                  ),
+                ],
               ),
-              borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(34),
+              const SizedBox(height: 10),
+              Container(
+                height: 1,
+                color: colorScheme.outline.withValues(alpha: 0.45),
               ),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: isDark ? 0.24 : 0.08),
-                  blurRadius: 30,
-                  offset: const Offset(0, -10),
-                ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final isCompact = constraints.maxWidth < 430;
+            final categoryField = ComposerSelectorField(
+              controller: _categoryController,
+              label: 'Categoria',
+              hint: 'Selecione',
+              icon: Icons.sell_rounded,
+              onTap: _pickCategory,
+              validator: (value) {
+                if ((value ?? '').trim().isEmpty) {
+                  return 'Escolha a categoria';
+                }
+                return null;
+              },
+            );
+            final paymentField = ComposerSelectorField(
+              controller: _paymentMethodController,
+              label: 'Pagamento',
+              hint: 'Selecione',
+              icon: Icons.account_balance_wallet_rounded,
+              onTap: _pickPaymentMethod,
+              validator: (value) {
+                if ((value ?? '').trim().isEmpty) {
+                  return 'Escolha a forma';
+                }
+                return null;
+              },
+            );
+
+            if (isCompact) {
+              return Column(
+                children: [
+                  categoryField,
+                  const SizedBox(height: 12),
+                  paymentField,
+                ],
+              );
+            }
+
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(child: categoryField),
+                const SizedBox(width: 12),
+                Expanded(child: paymentField),
               ],
-            ),
-            child: SafeArea(
-              top: false,
-              child: SingleChildScrollView(
-                physics: const BouncingScrollPhysics(),
-                padding: const EdgeInsets.fromLTRB(20, 12, 20, 26),
-                child: Form(
-                  key: _formKey,
+            );
+          },
+        ),
+        const SizedBox(height: 12),
+        ComposerSelectorField(
+          controller: _dateController,
+          label: 'Data',
+          hint: 'Selecione',
+          icon: Icons.calendar_month_rounded,
+          onTap: _pickDate,
+          trailingIcon: Icons.event_available_rounded,
+        ),
+        const SizedBox(height: 12),
+        AnimatedSize(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+          child: _isCardPayment
+              ? ComposerPanel(
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Center(
-                        child: Container(
-                          width: 44,
-                          height: 5,
-                          decoration: BoxDecoration(
-                            color: colorScheme.outline.withValues(alpha: 0.4),
-                            borderRadius: BorderRadius.circular(99),
-                          ),
-                        ),
+                      ComposerSelectorField(
+                        controller: _cardController,
+                        label: 'Cartão',
+                        hint: 'Selecione o cartão',
+                        icon: Icons.credit_card_rounded,
+                        iconWidget: _selectedCard == null
+                            ? null
+                            : brandFieldIcon(
+                                CardBrand.fromApiValue(_selectedCard!.brand),
+                              ),
+                        onTap: _pickCard,
+                        validator: (value) {
+                          if (_isCardPayment && (value ?? '').trim().isEmpty) {
+                            return 'Escolha o cartão';
+                          }
+                          return null;
+                        },
                       ),
-                      const SizedBox(height: 18),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Nova transação',
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .headlineSmall
-                                      ?.copyWith(fontWeight: FontWeight.w900),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  'Rápido, limpo e no estilo do app.',
-                                  style: Theme.of(context).textTheme.bodyMedium
-                                      ?.copyWith(
-                                        color: colorScheme.onSurface.withValues(
-                                          alpha: 0.62,
-                                        ),
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          ComposerCloseButton(
-                            onPressed: () => Navigator.of(context).pop(false),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 18),
-                      _ComposerTypeSwitcher(
-                        type: _type,
-                        onChanged: (type) {
+                      const SizedBox(height: 12),
+                      ComposerSwitchTile(
+                        title: 'Parcelado',
+                        subtitle: 'Ative para informar as parcelas.',
+                        value: _isInstallment,
+                        activeColor: colorScheme.primary,
+                        onChanged: (value) {
                           setState(() {
-                            _type = type;
-                            if (!_categoryOptions.any(
-                              (option) =>
-                                  option.value ==
-                                  _categoryController.text.trim(),
-                            )) {
-                              _categoryController.clear();
-                            }
-                            if (_paymentMethod != null &&
-                                !_paymentOptions.any(
-                                  (option) => option.value == _paymentMethod,
-                                )) {
-                              _paymentMethod = null;
-                              _paymentMethodController.clear();
-                              _cardController.clear();
-                              _selectedCard = null;
-                              _isInstallment = false;
+                            _isInstallment = value;
+                            if (!_isInstallment) {
                               _installmentsController.text = '1';
+                            } else {
+                              final current = _installmentsCount();
+                              if (current < 2 || current > 36) {
+                                _installmentsController.text = '2 vezes';
+                              }
                             }
                           });
                         },
                       ),
-                      const SizedBox(height: 16),
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 4),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              crossAxisAlignment: CrossAxisAlignment.end,
-                              children: [
-                                Text(
-                                  'R\$',
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .headlineMedium
-                                      ?.copyWith(
-                                        color: colorScheme.onSurface,
-                                        fontWeight: FontWeight.w900,
-                                        letterSpacing: -0.8,
-                                      ),
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: TextFormField(
-                                    controller: _amountController,
-                                    focusNode: _amountFocusNode,
-                                    keyboardType: TextInputType.number,
-                                    inputFormatters: [CurrencyInputFormatter()],
-                                    onTap: _syncAmountCursorToEnd,
-                                    textAlign: TextAlign.left,
-                                    textAlignVertical: TextAlignVertical.center,
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .headlineMedium
-                                        ?.copyWith(
-                                          color: colorScheme.onSurface,
-                                          fontWeight: FontWeight.w900,
-                                          letterSpacing: -0.8,
-                                        ),
-                                    decoration: const InputDecoration(
-                                      hintText: '0,00',
-                                      border: InputBorder.none,
-                                      enabledBorder: InputBorder.none,
-                                      focusedBorder: InputBorder.none,
-                                      errorBorder: InputBorder.none,
-                                      focusedErrorBorder: InputBorder.none,
-                                      disabledBorder: InputBorder.none,
-                                      filled: false,
-                                      isDense: true,
-                                      isCollapsed: true,
-                                      contentPadding: EdgeInsets.zero,
-                                    ),
-                                    validator: (value) {
-                                      if (_parseAmountValue() <= 0) {
-                                        return 'Informe um valor válido';
-                                      }
-                                      return null;
-                                    },
-                                  ),
-                                ),
-                                const SizedBox(width: 4),
-                                Icon(
-                                  Icons.calculate_rounded,
-                                  size: 20,
-                                  color: colorScheme.primary,
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 10),
-                            Container(
-                              height: 1,
-                              color: colorScheme.outline.withValues(
-                                alpha: 0.45,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 14),
-                      LayoutBuilder(
-                        builder: (context, constraints) {
-                          final isCompact = constraints.maxWidth < 430;
-                          final categoryField = ComposerSelectorField(
-                            controller: _categoryController,
-                            label: 'Categoria',
-                            hint: 'Selecione',
-                            icon: Icons.sell_rounded,
-                            onTap: _pickCategory,
-                            validator: (value) {
-                              if ((value ?? '').trim().isEmpty) {
-                                return 'Escolha a categoria';
-                              }
-                              return null;
-                            },
-                          );
-                          final paymentField = ComposerSelectorField(
-                            controller: _paymentMethodController,
-                            label: 'Pagamento',
-                            hint: 'Selecione',
-                            icon: Icons.account_balance_wallet_rounded,
-                            onTap: _pickPaymentMethod,
-                            validator: (value) {
-                              if ((value ?? '').trim().isEmpty) {
-                                return 'Escolha a forma';
-                              }
-                              return null;
-                            },
-                          );
-
-                          if (isCompact) {
-                            return Column(
-                              children: [
-                                categoryField,
-                                const SizedBox(height: 12),
-                                paymentField,
-                              ],
-                            );
-                          }
-
-                          return Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Expanded(child: categoryField),
-                              const SizedBox(width: 12),
-                              Expanded(child: paymentField),
-                            ],
-                          );
-                        },
-                      ),
-                      const SizedBox(height: 12),
-                      ComposerSelectorField(
-                        controller: _dateController,
-                        label: 'Data',
-                        hint: 'Selecione',
-                        icon: Icons.calendar_month_rounded,
-                        onTap: _pickDate,
-                        trailingIcon: Icons.event_available_rounded,
-                      ),
-                      const SizedBox(height: 12),
                       AnimatedSize(
-                        duration: const Duration(milliseconds: 220),
+                        duration: const Duration(milliseconds: 200),
                         curve: Curves.easeOutCubic,
-                        child: _isCardPayment
-                            ? ComposerPanel(
-                                child: Column(
-                                  children: [
-                                    ComposerSelectorField(
-                                      controller: _cardController,
-                                      label: 'Cartão',
-                                      hint: 'Selecione o cartão',
-                                      icon: Icons.credit_card_rounded,
-                                      iconWidget: _selectedCard == null
-                                          ? null
-                                          : brandFieldIcon(
-                                              CardBrand.fromApiValue(
-                                                _selectedCard!.brand,
-                                              ),
-                                            ),
-                                      onTap: _pickCard,
-                                      validator: (value) {
-                                        if (_isCardPayment &&
-                                            (value ?? '').trim().isEmpty) {
-                                          return 'Escolha o cartão';
-                                        }
-                                        return null;
-                                      },
-                                    ),
-                                    const SizedBox(height: 12),
-                                    ComposerSwitchTile(
-                                      title: 'Parcelado',
-                                      subtitle:
-                                          'Ative para informar as parcelas.',
-                                      value: _isInstallment,
-                                      onChanged: (value) {
-                                        setState(() {
-                                          _isInstallment = value;
-                                          if (!_isInstallment) {
-                                            _installmentsController.text = '1';
-                                          } else {
-                                            final current =
-                                                _installmentsCount();
-                                            if (current < 2 || current > 36) {
-                                              _installmentsController.text =
-                                                  '2 vezes';
-                                            }
-                                          }
-                                        });
-                                      },
-                                    ),
-                                    AnimatedSize(
-                                      duration: const Duration(
-                                        milliseconds: 200,
-                                      ),
-                                      curve: Curves.easeOutCubic,
-                                      child: _isInstallment
-                                          ? Padding(
-                                              padding: const EdgeInsets.only(
-                                                top: 12,
-                                              ),
-                                              child: ComposerSelectorField(
-                                                controller:
-                                                    _installmentsController,
-                                                label: 'Número de parcelas',
-                                                hint: 'Selecione',
-                                                icon: Icons
-                                                    .calendar_view_month_rounded,
-                                                onTap: _pickInstallments,
-                                                validator: (value) {
-                                                  if (!_isInstallment) {
-                                                    return null;
-                                                  }
-                                                  final parsed =
-                                                      _installmentsCount();
-                                                  if (parsed < 2 ||
-                                                      parsed > 36) {
-                                                    return 'Escolha entre 2 e 36 parcelas';
-                                                  }
-                                                  return null;
-                                                },
-                                              ),
-                                            )
-                                          : const SizedBox.shrink(),
-                                    ),
-                                  ],
+                        child: _isInstallment
+                            ? Padding(
+                                padding: const EdgeInsets.only(top: 12),
+                                child: ComposerSelectorField(
+                                  controller: _installmentsController,
+                                  label: 'Número de parcelas',
+                                  hint: 'Selecione',
+                                  icon: Icons.calendar_view_month_rounded,
+                                  onTap: _pickInstallments,
+                                  validator: (value) {
+                                    if (!_isInstallment) {
+                                      return null;
+                                    }
+                                    final parsed = _installmentsCount();
+                                    if (parsed < 2 || parsed > 36) {
+                                      return 'Escolha entre 2 e 36 parcelas';
+                                    }
+                                    return null;
+                                  },
                                 ),
                               )
                             : const SizedBox.shrink(),
                       ),
-                      const SizedBox(height: 12),
-                      ComposerPanel(
-                        child: Column(
-                          children: [
-                            ComposerSwitchTile(
-                              title: 'Recorrente',
-                              subtitle:
-                                  'Repete automaticamente esse lançamento.',
-                              value: _isRecurring,
-                              activeColor: colorScheme.primary,
-                              onChanged: (value) {
-                                setState(() {
-                                  _isRecurring = value;
-                                });
-                              },
-                            ),
-                            AnimatedSize(
-                              duration: const Duration(milliseconds: 200),
-                              curve: Curves.easeOutCubic,
-                              child: _isRecurring
-                                  ? Padding(
-                                      padding: const EdgeInsets.only(top: 14),
-                                      child: _ComposerRecurrenceRow(
-                                        recurrence: _recurrence,
-                                        onChanged: (value) {
-                                          setState(() {
-                                            _recurrence = value;
-                                          });
-                                        },
-                                      ),
-                                    )
-                                  : const SizedBox.shrink(),
-                            ),
-                            AnimatedSize(
-                              duration: const Duration(milliseconds: 200),
-                              curve: Curves.easeOutCubic,
-                              child:
-                                  _isRecurring &&
-                                      _recurrence ==
-                                          _TransactionRecurrence.custom
-                                  ? Padding(
-                                      padding: const EdgeInsets.only(top: 12),
-                                      child: LayoutBuilder(
-                                        builder: (context, constraints) {
-                                          final intervalField = TextFormField(
-                                            controller:
-                                                _customRecurrenceIntervalController,
-                                            keyboardType: TextInputType.number,
-                                            inputFormatters: [
-                                              FilteringTextInputFormatter
-                                                  .digitsOnly,
-                                            ],
-                                            decoration: const InputDecoration(
-                                              labelText: 'A cada',
-                                              hintText: '1',
-                                            ),
-                                            validator: (value) {
-                                              if (!_isRecurring ||
-                                                  _recurrence !=
-                                                      _TransactionRecurrence
-                                                          .custom) {
-                                                return null;
-                                              }
-                                              final parsed = int.tryParse(
-                                                value ?? '',
-                                              );
-                                              if (parsed == null ||
-                                                  parsed < 1) {
-                                                return 'Digite um intervalo';
-                                              }
-                                              return null;
-                                            },
-                                          );
-                                          final unitField =
-                                              _ComposerCustomUnitRow(
-                                                unit: _customRecurrenceUnit,
-                                                onChanged: (value) {
-                                                  setState(() {
-                                                    _customRecurrenceUnit =
-                                                        value;
-                                                  });
-                                                },
-                                              );
-
-                                          if (constraints.maxWidth < 430) {
-                                            return Column(
-                                              children: [
-                                                intervalField,
-                                                const SizedBox(height: 12),
-                                                unitField,
-                                              ],
-                                            );
-                                          }
-
-                                          return Row(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
-                                            children: [
-                                              Expanded(child: intervalField),
-                                              const SizedBox(width: 12),
-                                              Expanded(child: unitField),
-                                            ],
-                                          );
-                                        },
-                                      ),
-                                    )
-                                  : const SizedBox.shrink(),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      ComposerPanel(
-                        child: TextFormField(
-                          controller: _descriptionController,
-                          maxLines: 2,
-                          textCapitalization: TextCapitalization.sentences,
-                          decoration: const InputDecoration(
-                            labelText: 'Descrição (opcional)',
-                            hintText:
-                                'Ex.: mercado, aluguel, cliente, serviço...',
-                            border: InputBorder.none,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-                      FilledButton.icon(
-                        onPressed: _isSaving ? null : _save,
-                        icon: AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 180),
-                          child: _isSaving
-                              ? const SizedBox(
-                                  key: ValueKey('saving'),
-                                  width: 18,
-                                  height: 18,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : const Icon(
-                                  Icons.check_rounded,
-                                  key: ValueKey('save'),
-                                ),
-                        ),
-                        label: Text(
-                          _isSaving ? 'Salvando...' : 'Salvar transação',
-                        ),
-                      ),
                     ],
                   ),
+                )
+              : const SizedBox.shrink(),
+        ),
+        if (!_isEditing && !(_isCardPayment && _isInstallment)) ...[
+          const SizedBox(height: 12),
+          ComposerPanel(
+            child: Column(
+              children: [
+                ComposerSwitchTile(
+                  title: 'Recorrente',
+                  subtitle: 'Repete automaticamente esse lançamento.',
+                  value: _isRecurring,
+                  activeColor: colorScheme.primary,
+                  onChanged: (value) {
+                    setState(() {
+                      _isRecurring = value;
+                    });
+                  },
                 ),
-              ),
+                AnimatedSize(
+                  duration: const Duration(milliseconds: 200),
+                  curve: Curves.easeOutCubic,
+                  child: _isRecurring
+                      ? Padding(
+                          padding: const EdgeInsets.only(top: 14),
+                          child: _ComposerRecurrenceRow(
+                            recurrence: _recurrence,
+                            onChanged: (value) {
+                              setState(() {
+                                _recurrence = value;
+                              });
+                            },
+                          ),
+                        )
+                      : const SizedBox.shrink(),
+                ),
+                AnimatedSize(
+                  duration: const Duration(milliseconds: 200),
+                  curve: Curves.easeOutCubic,
+                  child:
+                      _isRecurring &&
+                          _recurrence == _TransactionRecurrence.custom
+                      ? Padding(
+                          padding: const EdgeInsets.only(top: 12),
+                          child: LayoutBuilder(
+                            builder: (context, constraints) {
+                              final intervalField = TextFormField(
+                                controller: _customRecurrenceIntervalController,
+                                keyboardType: TextInputType.number,
+                                inputFormatters: [
+                                  FilteringTextInputFormatter.digitsOnly,
+                                ],
+                                decoration: const InputDecoration(
+                                  labelText: 'A cada',
+                                  hintText: '1',
+                                ),
+                                validator: (value) {
+                                  if (!_isRecurring ||
+                                      _recurrence !=
+                                          _TransactionRecurrence.custom) {
+                                    return null;
+                                  }
+                                  final parsed = int.tryParse(value ?? '');
+                                  if (parsed == null || parsed < 1) {
+                                    return 'Digite um intervalo';
+                                  }
+                                  return null;
+                                },
+                              );
+                              final unitField = _ComposerCustomUnitRow(
+                                unit: _customRecurrenceUnit,
+                                onChanged: (value) {
+                                  setState(() {
+                                    _customRecurrenceUnit = value;
+                                  });
+                                },
+                              );
+
+                              if (constraints.maxWidth < 430) {
+                                return Column(
+                                  children: [
+                                    intervalField,
+                                    const SizedBox(height: 12),
+                                    unitField,
+                                  ],
+                                );
+                              }
+
+                              return Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Expanded(child: intervalField),
+                                  const SizedBox(width: 12),
+                                  Expanded(child: unitField),
+                                ],
+                              );
+                            },
+                          ),
+                        )
+                      : const SizedBox.shrink(),
+                ),
+              ],
+            ),
+          ),
+        ],
+        const SizedBox(height: 12),
+        ComposerPanel(
+          child: TextFormField(
+            controller: _descriptionController,
+            maxLines: 2,
+            textCapitalization: TextCapitalization.sentences,
+            decoration: const InputDecoration(
+              labelText: 'Descrição (opcional)',
+              hintText: 'Ex.: mercado, aluguel, cliente, serviço...',
+              border: InputBorder.none,
             ),
           ),
         ),
-      ),
+        const SizedBox(height: 20),
+        FilledButton.icon(
+          onPressed: _isSaving ? null : _save,
+          icon: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 180),
+            child: _isSaving
+                ? const SizedBox(
+                    key: ValueKey('saving'),
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.check_rounded, key: ValueKey('save')),
+          ),
+          label: Text(
+            _isSaving
+                ? 'Salvando...'
+                : (_isEditing ? 'Salvar alterações' : 'Salvar transação'),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -1058,7 +1024,7 @@ class _ComposerTypeButton extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
 
     return InkWell(
-      borderRadius: BorderRadius.circular(22),
+      borderRadius: BorderRadius.circular(AppRadii.lg),
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
@@ -1068,7 +1034,7 @@ class _ComposerTypeButton extends StatelessWidget {
           color: selected
               ? accentColor.withValues(alpha: 0.1)
               : colorScheme.surface.withValues(alpha: 0.55),
-          borderRadius: BorderRadius.circular(22),
+          borderRadius: BorderRadius.circular(AppRadii.lg),
           border: Border.all(
             color: selected
                 ? accentColor.withValues(alpha: 0.9)
@@ -1192,7 +1158,7 @@ class _ComposerMiniChoiceButton extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
 
     return InkWell(
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(AppRadii.sm),
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
@@ -1201,7 +1167,7 @@ class _ComposerMiniChoiceButton extends StatelessWidget {
           color: selected
               ? colorScheme.primary.withValues(alpha: 0.12)
               : colorScheme.surface.withValues(alpha: 0.42),
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(AppRadii.sm),
           border: Border.all(
             color: selected
                 ? colorScheme.primary.withValues(alpha: 0.6)
@@ -1239,7 +1205,7 @@ class _ComposerRecurrenceButton extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
 
     return InkWell(
-      borderRadius: BorderRadius.circular(18),
+      borderRadius: BorderRadius.circular(AppRadii.md),
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
@@ -1252,7 +1218,7 @@ class _ComposerRecurrenceButton extends StatelessWidget {
                 )
               : null,
           color: selected ? null : colorScheme.surface.withValues(alpha: 0.65),
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(AppRadii.md),
           border: Border.all(
             color: selected
                 ? Colors.white.withValues(alpha: 0.18)

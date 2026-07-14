@@ -1,4 +1,8 @@
 import { TransactionType } from '../transaction-type.enum';
+import type {
+  RecurrenceFrequency,
+  RecurrenceUnit,
+} from '../interfaces/transaction.interface';
 
 export interface CreateTransactionDto {
   title: string;
@@ -9,4 +13,10 @@ export interface CreateTransactionDto {
   notes?: string;
   source?: string;
   cardId?: string;
+  /** null explicitly clears recurrence (used when editing a transaction to turn it off). */
+  recurrenceFrequency?: RecurrenceFrequency | null;
+  recurrenceInterval?: number | null;
+  recurrenceUnit?: RecurrenceUnit | null;
+  /** Total parcelas for an installment purchase; implies monthly recurrence. */
+  installmentsTotal?: number;
 }

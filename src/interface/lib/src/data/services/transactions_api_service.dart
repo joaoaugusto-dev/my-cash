@@ -53,9 +53,33 @@ class TransactionsApiService {
     );
   }
 
-  Future<void> deleteTransaction(String id) async {
+  /// [scope] matters only when editing a recurring occurrence: 'this' (the
+  /// default) splits off just that month as a standalone transaction, past
+  /// months untouched; 'forward' splits the series from that month on.
+  Future<FinancialTransaction> updateTransaction(
+    String id,
+    FinancialTransaction transaction, {
+    String? scope,
+  }) async {
+    final query = scope != null ? '?scope=$scope' : '';
+    final response = await _client.patch(
+      _uri('/transactions/${Uri.encodeComponent(id)}$query'),
+      headers: await _headers(),
+      body: jsonEncode(transaction.toCreateJson()),
+    );
+
+    _ensureSuccess(response);
+    return FinancialTransaction.fromJson(
+      jsonDecode(response.body) as Map<String, dynamic>,
+    );
+  }
+
+  /// [scope] matters only for a recurring occurrence's id: 'this' skips just
+  /// that month, 'forward' stops the series from that month on.
+  Future<void> deleteTransaction(String id, {String? scope}) async {
+    final query = scope != null ? '?scope=$scope' : '';
     final response = await _client.delete(
-      _uri('/transactions/$id'),
+      _uri('/transactions/${Uri.encodeComponent(id)}$query'),
       headers: await _headers(),
     );
 

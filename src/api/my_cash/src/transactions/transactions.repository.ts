@@ -37,6 +37,12 @@ export interface TransactionsRepository {
     userId: string,
     id: string,
   ): Promise<void>;
+  /** All recurring anchor rows that started on/before `activeBefore` (ISO date). */
+  findRecurringAnchors(
+    authContext: RepositoryAuthContext,
+    userId: string,
+    activeBefore: string,
+  ): Promise<Transaction[]>;
 }
 
 export const TRANSACTIONS_REPOSITORY = 'TRANSACTIONS_REPOSITORY';

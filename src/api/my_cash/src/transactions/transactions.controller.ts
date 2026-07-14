@@ -80,21 +80,28 @@ export class TransactionsController {
     @Req() request: AuthenticatedRequest,
     @Param('id') id: string,
     @Body() dto: UpdateTransactionDto,
+    @Query('scope') scope?: 'this' | 'forward',
   ) {
     return this.transactionsService.update(
       this.authContext(request),
       request.user.userId,
       id,
       dto,
+      scope,
     );
   }
 
   @Delete(':id')
-  async remove(@Req() request: AuthenticatedRequest, @Param('id') id: string) {
+  async remove(
+    @Req() request: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Query('scope') scope?: 'this' | 'forward',
+  ) {
     await this.transactionsService.remove(
       this.authContext(request),
       request.user.userId,
       id,
+      scope,
     );
 
     return { deleted: true, id };

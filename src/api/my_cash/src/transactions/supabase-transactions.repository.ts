@@ -20,6 +20,12 @@ interface TransactionRow {
   card_id: string | null;
   created_at: string;
   updated_at: string;
+  recurrence_frequency: string | null;
+  recurrence_interval: number | null;
+  recurrence_unit: string | null;
+  recurrence_until: string | null;
+  recurrence_exceptions: string[] | null;
+  installments_total: number | null;
 }
 
 export class SupabaseTransactionsRepository implements TransactionsRepository {
@@ -144,6 +150,25 @@ export class SupabaseTransactionsRepository implements TransactionsRepository {
     }
   }
 
+  async findRecurringAnchors(
+    authContext: RepositoryAuthContext,
+    userId: string,
+    activeBefore: string,
+  ): Promise<Transaction[]> {
+    const { data, error } = await this.client(authContext)
+      .from('transactions')
+      .select('*')
+      .eq('user_id', userId)
+      .not('recurrence_frequency', 'is', null)
+      .lt('occurred_at', activeBefore);
+
+    if (error) {
+      throw error;
+    }
+
+    return (data ?? []).map((row) => this.fromRow(row as TransactionRow));
+  }
+
   private client(authContext: RepositoryAuthContext) {
     return createClient(this.supabaseUrl, this.supabaseAnonKey, {
       global: {
@@ -172,6 +197,12 @@ export class SupabaseTransactionsRepository implements TransactionsRepository {
       card_id: transaction.cardId ?? null,
       created_at: transaction.createdAt,
       updated_at: transaction.updatedAt,
+      recurrence_frequency: transaction.recurrenceFrequency ?? null,
+      recurrence_interval: transaction.recurrenceInterval ?? null,
+      recurrence_unit: transaction.recurrenceUnit ?? null,
+      recurrence_until: transaction.recurrenceUntil ?? null,
+      recurrence_exceptions: transaction.recurrenceExceptions ?? [],
+      installments_total: transaction.installmentsTotal ?? null,
     };
   }
 
@@ -189,6 +220,15 @@ export class SupabaseTransactionsRepository implements TransactionsRepository {
       cardId: row.card_id ?? undefined,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
+      recurrenceFrequency:
+        (row.recurrence_frequency as Transaction['recurrenceFrequency']) ??
+        undefined,
+      recurrenceInterval: row.recurrence_interval ?? undefined,
+      recurrenceUnit:
+        (row.recurrence_unit as Transaction['recurrenceUnit']) ?? undefined,
+      recurrenceUntil: row.recurrence_until ?? undefined,
+      recurrenceExceptions: row.recurrence_exceptions ?? undefined,
+      installmentsTotal: row.installments_total ?? undefined,
     };
   }
 

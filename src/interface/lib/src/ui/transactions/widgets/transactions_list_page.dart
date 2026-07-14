@@ -1,110 +1,86 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import 'package:my_cash/src/domain/models/financial_transaction.dart';
-import 'package:my_cash/src/data/services/transactions_api_service.dart';
+import '../../../utils/formatters.dart';
+import '../../core/theme/app_theme.dart';
 import '../../core/widgets/staggered_fade_in.dart';
-import 'transaction_detail_sheet.dart';
+import '../../home/view_model/home_view_model.dart';
+import 'transaction_composer_sheet.dart';
 import 'transactions_list_widgets.dart';
 
+/// Lists transactions for whatever period is currently selected on the home
+/// tab — it reads [HomeViewModel.cachedDashboard] directly instead of
+/// fetching its own, so the period always stays in sync with the home tab.
 class TransactionsListPage extends StatefulWidget {
-  const TransactionsListPage({
-    super.key,
-    required this.apiService,
-    required this.refreshTrigger,
-    required this.onDataChanged,
-  });
-
-  final TransactionsApiService apiService;
-  final ValueNotifier<int> refreshTrigger;
-  final VoidCallback onDataChanged;
+  const TransactionsListPage({super.key});
 
   @override
   State<TransactionsListPage> createState() => _TransactionsListPageState();
 }
 
 class _TransactionsListPageState extends State<TransactionsListPage> {
-  final String _selectedMonth = _currentMonth();
-  FinancialDashboard? _cachedDashboard;
   FinancialTransactionType? _filterType;
-  final Set<String> _deletingIds = {};
-  final Set<String> _removingIds = {};
 
-  static String _currentMonth() {
-    final now = DateTime.now().toUtc();
-    return '${now.year}-${now.month.toString().padLeft(2, '0')}';
-  }
+  Future<void> _handleDelete(HomeViewModel vm, FinancialTransaction tx) async {
+    String? scope;
+    if (tx.installmentsTotal != null) {
+      final confirmed = await showInstallmentDeleteConfirmDialog(context);
+      if (!confirmed || !mounted) return;
+    } else if (tx.isRecurring) {
+      scope = await showRecurringDeleteScopeDialog(context);
+      if (scope == null || !mounted) return;
+    } else {
+      final confirmed = await showDeleteConfirmDialog(context);
+      if (!confirmed || !mounted) return;
+    }
 
-  @override
-  void initState() {
-    super.initState();
-    _load();
-    widget.refreshTrigger.addListener(_onRefreshTriggered);
-  }
-
-  @override
-  void dispose() {
-    widget.refreshTrigger.removeListener(_onRefreshTriggered);
-    super.dispose();
-  }
-
-  void _onRefreshTriggered() {
-    _load();
-  }
-
-  void _load() {
-    widget.apiService.fetchDashboard(month: _selectedMonth).then((dashboard) {
-      if (mounted) setState(() => _cachedDashboard = dashboard);
-    });
-  }
-
-  Future<void> _handleDelete(String id) async {
-    if (_deletingIds.contains(id) || _removingIds.contains(id)) return;
-    setState(() => _deletingIds.add(id));
     try {
-      await widget.apiService.deleteTransaction(id);
-      if (!mounted) return;
-      setState(() {
-        _deletingIds.remove(id);
-        _removingIds.add(id);
-      });
-      await Future.delayed(const Duration(milliseconds: 350));
-      if (!mounted) return;
-      final dashboard = _cachedDashboard;
-      if (dashboard != null) {
-        final updated = dashboard.transactions
-            .where((t) => t.id != id)
-            .toList();
-        setState(() {
-          _cachedDashboard = FinancialDashboard(
-            summary: dashboard.summary,
-            transactions: updated,
-          );
-          _removingIds.remove(id);
-        });
-        widget.onDataChanged();
-      }
+      await vm.deleteTransaction(tx.id, scope: scope);
     } catch (_) {
       if (!mounted) return;
-      setState(() => _deletingIds.remove(id));
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Erro ao remover. Tente novamente.')),
       );
     }
   }
 
-  void _showTransactionDetail(FinancialTransaction tx) {
-    showGeneralDialog(
+  Future<void> _openEditSheet(
+    HomeViewModel vm,
+    FinancialTransaction tx,
+  ) async {
+    final cards = await vm.cardsFuture ?? const [];
+    if (!mounted) return;
+
+    final updated = await showModalBottomSheet<bool>(
       context: context,
-      barrierDismissible: true,
-      barrierLabel: 'Fechar detalhes',
-      pageBuilder: (context, animation, secondaryAnimation) =>
-          TransactionDetailSheet(transaction: tx),
-      transitionDuration: const Duration(milliseconds: 300),
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return RepaintBoundary(
+          child: TransactionComposerSheet(
+            initialTransaction: tx,
+            cards: cards,
+            spentByCardId: vm.spentByCardId,
+            onSubmit: (transaction, {scope}) async {
+              await vm.updateTransaction(transaction, scope: scope);
+            },
+          ),
+        );
+      },
     );
+
+    if (updated == true && mounted) {
+      vm.refreshDashboard();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Lançamento atualizado com sucesso.')),
+      );
+    }
   }
 
-  List<FinancialTransaction> get _filteredTransactions {
-    final tx = _cachedDashboard?.transactions ?? [];
+  List<FinancialTransaction> _filteredTransactions(HomeViewModel vm) {
+    final tx = vm.cachedDashboard?.transactions ?? const [];
     if (_filterType == null) return tx;
     return tx.where((t) => t.type == _filterType).toList();
   }
@@ -138,11 +114,6 @@ class _TransactionsListPageState extends State<TransactionsListPage> {
     return '$dayStr/$monthStr - $weekday';
   }
 
-  String _formatCurrency(double value) {
-    final absolute = value.abs().toStringAsFixed(2).replaceAll('.', ',');
-    return 'R\$ $absolute';
-  }
-
   Color _transactionColor(FinancialTransactionType type) {
     final colorScheme = Theme.of(context).colorScheme;
     return type == FinancialTransactionType.income
@@ -152,17 +123,21 @@ class _TransactionsListPageState extends State<TransactionsListPage> {
 
   @override
   Widget build(BuildContext context) {
+    final vm = context.watch<HomeViewModel>();
     final colorScheme = Theme.of(context).colorScheme;
     final mediaQuery = MediaQuery.of(context);
     final topPadding = mediaQuery.padding.top;
     final bottomPadding = mediaQuery.padding.bottom;
+    final periodLabel = vm.visionMode == VisionMode.yearly
+        ? vm.selectedYear
+        : formatMonthLabel(vm.selectedMonth);
 
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: Stack(
         children: [
           RefreshIndicator(
-            onRefresh: () async => _load(),
+            onRefresh: () async => vm.refreshDashboard(),
             color: colorScheme.secondary,
             child: CustomScrollView(
               physics: const AlwaysScrollableScrollPhysics(
@@ -183,13 +158,24 @@ class _TransactionsListPageState extends State<TransactionsListPage> {
                         style: Theme.of(context).textTheme.headlineSmall
                             ?.copyWith(fontWeight: FontWeight.w900),
                       ),
+                      const SizedBox(height: 4),
+                      Text(
+                        periodLabel,
+                        style: Theme.of(context).textTheme.bodyMedium
+                            ?.copyWith(
+                              color: colorScheme.onSurface.withValues(
+                                alpha: 0.6,
+                              ),
+                              fontWeight: FontWeight.w700,
+                            ),
+                      ),
                       const SizedBox(height: 16),
                       FilterBar(
                         selected: _filterType,
                         onChanged: (type) => setState(() => _filterType = type),
                       ),
                       const SizedBox(height: 20),
-                      _buildContent(),
+                      _buildContent(vm),
                     ]),
                   ),
                 ),
@@ -201,9 +187,9 @@ class _TransactionsListPageState extends State<TransactionsListPage> {
     );
   }
 
-  Widget _buildContent() {
+  Widget _buildContent(HomeViewModel vm) {
     final colorScheme = Theme.of(context).colorScheme;
-    final dashboard = _cachedDashboard;
+    final dashboard = vm.cachedDashboard;
 
     if (dashboard == null) {
       return Center(
@@ -211,7 +197,7 @@ class _TransactionsListPageState extends State<TransactionsListPage> {
           padding: const EdgeInsets.all(48),
           decoration: BoxDecoration(
             color: colorScheme.surface.withValues(alpha: 0.7),
-            borderRadius: BorderRadius.circular(28),
+            borderRadius: BorderRadius.circular(AppRadii.xl),
             border: Border.all(
               color: colorScheme.outline.withValues(alpha: 0.48),
             ),
@@ -233,14 +219,14 @@ class _TransactionsListPageState extends State<TransactionsListPage> {
       );
     }
 
-    final grouped = _groupByDate(_filteredTransactions);
+    final grouped = _groupByDate(_filteredTransactions(vm));
 
     if (grouped.isEmpty) {
       return Container(
         padding: const EdgeInsets.all(40),
         decoration: BoxDecoration(
           color: colorScheme.surface.withValues(alpha: 0.7),
-          borderRadius: BorderRadius.circular(28),
+          borderRadius: BorderRadius.circular(AppRadii.xl),
           border: Border.all(
             color: colorScheme.outline.withValues(alpha: 0.48),
           ),
@@ -256,7 +242,7 @@ class _TransactionsListPageState extends State<TransactionsListPage> {
             Text(
               _filterType != null
                   ? 'Nenhuma transação encontrada para este filtro.'
-                  : 'Nenhuma transação neste mês.',
+                  : 'Nenhuma transação neste período.',
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                 color: colorScheme.onSurface.withValues(alpha: 0.6),
@@ -281,12 +267,12 @@ class _TransactionsListPageState extends State<TransactionsListPage> {
               index: rowIndex++,
               child: TransactionListRow(
                 transaction: tx,
-                formatCurrency: _formatCurrency,
+                formatCurrency: formatCurrency,
                 color: _transactionColor(tx.type),
-                isDeleting: _deletingIds.contains(tx.id),
-                isRemoving: _removingIds.contains(tx.id),
-                onDelete: () => _handleDelete(tx.id),
-                onTap: () => _showTransactionDetail(tx),
+                isDeleting: vm.deletingIds.contains(tx.id),
+                isRemoving: vm.removingIds.contains(tx.id),
+                onDelete: () => _handleDelete(vm, tx),
+                onTap: () => _openEditSheet(vm, tx),
               ),
             ),
         ],

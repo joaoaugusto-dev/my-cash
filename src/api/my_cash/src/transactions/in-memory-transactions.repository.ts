@@ -95,4 +95,17 @@ export class InMemoryTransactionsRepository implements TransactionsRepository {
 
     this.transactionsByUserId.set(userId, nextTransactions);
   }
+
+  async findRecurringAnchors(
+    _authContext: RepositoryAuthContext,
+    userId: string,
+    activeBefore: string,
+  ): Promise<Transaction[]> {
+    const transactions = this.transactionsByUserId.get(userId) ?? [];
+    return transactions.filter(
+      (transaction) =>
+        transaction.recurrenceFrequency &&
+        transaction.occurredAt < activeBefore,
+    );
+  }
 }

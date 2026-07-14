@@ -109,6 +109,128 @@ void main() {
     expect(created.title, 'Lanche');
   });
 
+  test('updateTransaction sends PATCH to the transaction id', () async {
+    final client = MockClient((request) async {
+      expect(request.method, 'PATCH');
+      expect(request.url.path, '/transactions/tx-1');
+
+      final body = jsonDecode(request.body) as Map<String, dynamic>;
+      expect(body['title'], 'Lanche editado');
+
+      return http.Response(
+        jsonEncode({
+          'id': 'tx-1',
+          'userId': 'user-1',
+          'title': 'Lanche editado',
+          'amount': 40,
+          'type': 'expense',
+          'category': 'Alimentação',
+          'occurredAt': '2026-05-02T10:00:00.000Z',
+          'notes': null,
+          'source': null,
+          'createdAt': '2026-05-02T10:00:00.000Z',
+          'updatedAt': '2026-05-03T10:00:00.000Z',
+        }),
+        200,
+      );
+    });
+
+    final service = TransactionsApiService(
+      apiBaseUrl: 'https://api.example.com',
+      accessTokenProvider: () => 'token-123',
+      client: client,
+    );
+
+    final updated = await service.updateTransaction(
+      'tx-1',
+      FinancialTransaction(
+        id: 'tx-1',
+        userId: 'user-1',
+        title: 'Lanche editado',
+        amount: 40,
+        type: FinancialTransactionType.expense,
+        category: 'Alimentação',
+        occurredAt: '2026-05-02T10:00:00.000Z',
+        createdAt: '2026-05-02T10:00:00.000Z',
+        updatedAt: '2026-05-03T10:00:00.000Z',
+      ),
+    );
+
+    expect(updated.title, 'Lanche editado');
+    expect(updated.amount, 40);
+  });
+
+  test('updateTransaction forwards the edit scope as a query param', () async {
+    final client = MockClient((request) async {
+      expect(request.method, 'PATCH');
+      expect(request.url.queryParameters['scope'], 'forward');
+
+      return http.Response(
+        jsonEncode({
+          'id': 'anchor-1',
+          'userId': 'user-1',
+          'title': 'Aluguel',
+          'amount': 1800,
+          'type': 'expense',
+          'category': 'Moradia',
+          'occurredAt': '2026-07-05T00:00:00.000Z',
+          'createdAt': '2026-01-05T00:00:00.000Z',
+          'updatedAt': '2026-07-05T00:00:00.000Z',
+        }),
+        200,
+      );
+    });
+
+    final service = TransactionsApiService(
+      apiBaseUrl: 'https://api.example.com',
+      accessTokenProvider: () => 'token-123',
+      client: client,
+    );
+
+    await service.updateTransaction(
+      'anchor-1::2026-07-05T00:00:00.000Z',
+      FinancialTransaction(
+        id: 'anchor-1::2026-07-05T00:00:00.000Z',
+        userId: 'user-1',
+        title: 'Aluguel',
+        amount: 1800,
+        type: FinancialTransactionType.expense,
+        category: 'Moradia',
+        occurredAt: '2026-07-05T00:00:00.000Z',
+        createdAt: '2026-01-05T00:00:00.000Z',
+        updatedAt: '2026-07-05T00:00:00.000Z',
+      ),
+      scope: 'forward',
+    );
+  });
+
+  test(
+    'deleteTransaction encodes a recurring occurrence id and forwards scope',
+    () async {
+      final client = MockClient((request) async {
+        expect(request.method, 'DELETE');
+        expect(
+          request.url.path,
+          '/transactions/anchor-1%3A%3A2026-07-05T00%3A00%3A00.000Z',
+        );
+        expect(request.url.queryParameters['scope'], 'forward');
+
+        return http.Response(jsonEncode({'deleted': true}), 200);
+      });
+
+      final service = TransactionsApiService(
+        apiBaseUrl: 'https://api.example.com',
+        accessTokenProvider: () => 'token-123',
+        client: client,
+      );
+
+      await service.deleteTransaction(
+        'anchor-1::2026-07-05T00:00:00.000Z',
+        scope: 'forward',
+      );
+    },
+  );
+
   test('uses the latest access token for every request', () async {
     var issuedTokenCounter = 0;
     final authorizationHeaders = <String>[];

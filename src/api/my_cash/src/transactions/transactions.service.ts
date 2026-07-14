@@ -18,6 +18,16 @@ import {
   type RepositoryAuthContext,
   type TransactionsRepository,
 } from './transactions.repository';
+import {
+  addMonths,
+  expandRecurrence,
+  hasRemainingOccurrences,
+  parseOccurrenceId,
+  resolvePeriodWindow,
+} from './recurrence.util';
+
+const RECURRENCE_FREQUENCIES = ['weekly', 'monthly', 'yearly', 'custom'];
+const RECURRENCE_UNITS = ['days', 'months', 'years'];
 
 @Injectable()
 export class TransactionsService {
@@ -44,11 +54,31 @@ export class TransactionsService {
     month?: string,
     year?: string,
   ): Promise<Transaction[]> {
-    return this.transactionsRepository.findAll(authContext, userId, {
-      type,
-      month,
-      year,
-    });
+    const window = resolvePeriodWindow(month, year);
+
+    const [transactions, anchors] = await Promise.all([
+      this.transactionsRepository.findAll(authContext, userId, {
+        type,
+        month,
+        year,
+      }),
+      this.transactionsRepository.findRecurringAnchors(
+        authContext,
+        userId,
+        window.end.toISOString(),
+      ),
+    ]);
+
+    // Anchors never render as-is — only their expanded occurrences do —
+    // so drop them here to avoid double-counting the anchor's own start date.
+    const nonRecurring = transactions.filter((t) => !t.recurrenceFrequency);
+    const occurrences = anchors
+      .filter((anchor) => (type ? anchor.type === type : true))
+      .flatMap((anchor) => expandRecurrence(anchor, window));
+
+    return [...nonRecurring, ...occurrences].sort((a, b) =>
+      b.occurredAt.localeCompare(a.occurredAt),
+    );
   }
 
   async getSummary(
@@ -94,7 +124,18 @@ export class TransactionsService {
     userId: string,
     id: string,
   ): Promise<Transaction> {
-    return this.transactionsRepository.findOne(authContext, userId, id);
+    const { anchorId, occurrenceDate } = parseOccurrenceId(id);
+    const anchor = await this.transactionsRepository.findOne(
+      authContext,
+      userId,
+      anchorId,
+    );
+
+    if (!occurrenceDate) {
+      return anchor;
+    }
+
+    return { ...anchor, id, occurredAt: occurrenceDate, seriesId: anchor.id };
   }
 
   async create(
@@ -106,6 +147,7 @@ export class TransactionsService {
     await this.assertCardOwnership(authContext, userId, dto.cardId);
 
     const now = new Date().toISOString();
+    const occurredAt = this.normalizeDate(dto.occurredAt);
     const transaction: Transaction = {
       id: randomUUID(),
       userId,
@@ -113,13 +155,40 @@ export class TransactionsService {
       amount: this.normalizeAmount(dto.amount),
       type: dto.type,
       category: dto.category.trim(),
-      occurredAt: this.normalizeDate(dto.occurredAt),
+      occurredAt,
       notes: this.normalizeOptionalString(dto.notes),
       source: this.normalizeOptionalString(dto.source),
       cardId: dto.cardId,
       createdAt: now,
       updatedAt: now,
     };
+
+    if (dto.installmentsTotal) {
+      // Installments never materialize N rows — one anchor row recurs
+      // monthly, bounded by count, same mechanism as a recurring transaction.
+      this.assertInstallments(dto.installmentsTotal);
+      transaction.installmentsTotal = dto.installmentsTotal;
+      transaction.recurrenceFrequency = 'monthly';
+      transaction.recurrenceInterval = 1;
+      transaction.recurrenceUntil = addMonths(
+        new Date(occurredAt),
+        dto.installmentsTotal,
+      ).toISOString();
+      transaction.recurrenceExceptions = [];
+    } else {
+      this.assertRecurrence(dto.recurrenceFrequency, dto.recurrenceUnit);
+      transaction.recurrenceFrequency = dto.recurrenceFrequency ?? undefined;
+      transaction.recurrenceInterval = dto.recurrenceFrequency
+        ? (dto.recurrenceInterval ?? 1)
+        : undefined;
+      transaction.recurrenceUnit =
+        dto.recurrenceFrequency === 'custom'
+          ? (dto.recurrenceUnit ?? undefined)
+          : undefined;
+      transaction.recurrenceExceptions = dto.recurrenceFrequency
+        ? []
+        : undefined;
+    }
 
     return this.transactionsRepository.create(authContext, transaction);
   }
@@ -129,8 +198,70 @@ export class TransactionsService {
     userId: string,
     id: string,
     dto: UpdateTransactionDto,
+    scope?: 'this' | 'forward',
   ): Promise<Transaction> {
-    const transaction = await this.findOne(authContext, userId, id);
+    const { anchorId, occurrenceDate } = parseOccurrenceId(id);
+    const anchor = await this.transactionsRepository.findOne(
+      authContext,
+      userId,
+      anchorId,
+    );
+
+    // A plain transaction, a bare-anchor edit, or an installment (which,
+    // like a refund, is edited/deleted as one whole purchase — see remove())
+    // just gets its fields patched directly, same as before.
+    if (!occurrenceDate || anchor.installmentsTotal) {
+      return this.updateFields(authContext, userId, anchor, dto);
+    }
+
+    // Editing one occurrence of an open-ended recurring series: split it so
+    // past occurrences keep their original values, the same trick a
+    // calendar app uses for "this event" vs "this and following events".
+    const editScope = scope ?? 'this';
+    const nextAnchor = { ...anchor };
+
+    if (editScope === 'forward') {
+      nextAnchor.recurrenceUntil = occurrenceDate;
+    } else {
+      const exceptions = new Set(anchor.recurrenceExceptions ?? []);
+      exceptions.add(occurrenceDate.slice(0, 10));
+      nextAnchor.recurrenceExceptions = [...exceptions];
+    }
+
+    if (!hasRemainingOccurrences(nextAnchor)) {
+      await this.transactionsRepository.remove(authContext, userId, anchor.id);
+    } else {
+      nextAnchor.updatedAt = new Date().toISOString();
+      await this.transactionsRepository.update(authContext, nextAnchor);
+    }
+
+    const splitDto: CreateTransactionDto = {
+      title: dto.title ?? anchor.title,
+      amount: dto.amount ?? anchor.amount,
+      type: dto.type ?? anchor.type,
+      category: dto.category ?? anchor.category,
+      occurredAt: occurrenceDate,
+      notes: dto.notes ?? anchor.notes,
+      source: dto.source ?? anchor.source,
+      cardId: dto.cardId ?? anchor.cardId,
+      ...(editScope === 'forward'
+        ? {
+            recurrenceFrequency: anchor.recurrenceFrequency,
+            recurrenceInterval: anchor.recurrenceInterval,
+            recurrenceUnit: anchor.recurrenceUnit,
+          }
+        : {}),
+    };
+
+    return this.create(authContext, userId, splitDto);
+  }
+
+  private async updateFields(
+    authContext: RepositoryAuthContext,
+    userId: string,
+    transaction: Transaction,
+    dto: UpdateTransactionDto,
+  ): Promise<Transaction> {
     const nextTransaction = { ...transaction };
 
     if (dto.title !== undefined) {
@@ -170,6 +301,25 @@ export class TransactionsService {
       nextTransaction.cardId = dto.cardId;
     }
 
+    if (dto.recurrenceFrequency !== undefined) {
+      if (!dto.recurrenceFrequency) {
+        // Explicit null: the edit form turned recurrence off for this series.
+        nextTransaction.recurrenceFrequency = undefined;
+        nextTransaction.recurrenceInterval = undefined;
+        nextTransaction.recurrenceUnit = undefined;
+        nextTransaction.recurrenceUntil = undefined;
+        nextTransaction.recurrenceExceptions = undefined;
+      } else {
+        this.assertRecurrence(dto.recurrenceFrequency, dto.recurrenceUnit);
+        nextTransaction.recurrenceFrequency = dto.recurrenceFrequency;
+        nextTransaction.recurrenceInterval = dto.recurrenceInterval ?? 1;
+        nextTransaction.recurrenceUnit =
+          dto.recurrenceFrequency === 'custom'
+            ? (dto.recurrenceUnit ?? undefined)
+            : undefined;
+      }
+    }
+
     nextTransaction.updatedAt = new Date().toISOString();
 
     return this.transactionsRepository.update(authContext, nextTransaction);
@@ -179,8 +329,45 @@ export class TransactionsService {
     authContext: RepositoryAuthContext,
     userId: string,
     id: string,
+    scope?: 'this' | 'forward',
   ): Promise<void> {
-    await this.transactionsRepository.remove(authContext, userId, id);
+    const { anchorId, occurrenceDate } = parseOccurrenceId(id);
+
+    if (!occurrenceDate) {
+      await this.transactionsRepository.remove(authContext, userId, anchorId);
+      return;
+    }
+
+    const anchor = await this.transactionsRepository.findOne(
+      authContext,
+      userId,
+      anchorId,
+    );
+
+    if (anchor.installmentsTotal) {
+      // Installments are one purchase, not independent events — removing
+      // any parcela reverses the whole thing, past parcelas included.
+      await this.transactionsRepository.remove(authContext, userId, anchor.id);
+      return;
+    }
+
+    if (scope === 'forward') {
+      anchor.recurrenceUntil = occurrenceDate;
+    } else {
+      const exceptions = new Set(anchor.recurrenceExceptions ?? []);
+      exceptions.add(occurrenceDate.slice(0, 10));
+      anchor.recurrenceExceptions = [...exceptions];
+    }
+
+    if (!hasRemainingOccurrences(anchor)) {
+      // No occurrence left anywhere, past or future — the anchor has no
+      // purpose anymore.
+      await this.transactionsRepository.remove(authContext, userId, anchor.id);
+      return;
+    }
+
+    anchor.updatedAt = new Date().toISOString();
+    await this.transactionsRepository.update(authContext, anchor);
   }
 
   private assertValidPayload(dto: CreateTransactionDto): void {
@@ -189,6 +376,33 @@ export class TransactionsService {
     this.assertType(dto.type);
     this.normalizeAmount(dto.amount);
     this.normalizeDate(dto.occurredAt);
+  }
+
+  private assertRecurrence(
+    frequency: string | null | undefined,
+    unit: string | null | undefined,
+  ): void {
+    if (!frequency) return;
+
+    if (!RECURRENCE_FREQUENCIES.includes(frequency)) {
+      throw new BadRequestException(
+        'recurrenceFrequency must be weekly, monthly, yearly or custom',
+      );
+    }
+
+    if (frequency === 'custom' && !RECURRENCE_UNITS.includes(unit ?? '')) {
+      throw new BadRequestException(
+        'recurrenceUnit must be days, months or years for custom recurrence',
+      );
+    }
+  }
+
+  private assertInstallments(count: number): void {
+    if (!Number.isInteger(count) || count < 2 || count > 36) {
+      throw new BadRequestException(
+        'installmentsTotal must be an integer between 2 and 36',
+      );
+    }
   }
 
   private assertType(type: TransactionType): void {

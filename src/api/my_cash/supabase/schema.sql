@@ -78,6 +78,31 @@ create index if not exists transactions_card_id_idx
   on public.transactions (card_id)
   where card_id is not null;
 
+-- Recurring transactions: the row a user created is the "anchor" holding the
+-- rule; occurrences in other months are computed on the fly, never stored.
+alter table public.transactions
+  add column if not exists recurrence_frequency text
+    check (recurrence_frequency in ('weekly', 'monthly', 'yearly', 'custom'));
+alter table public.transactions
+  add column if not exists recurrence_interval integer;
+alter table public.transactions
+  add column if not exists recurrence_unit text
+    check (recurrence_unit in ('days', 'months', 'years'));
+alter table public.transactions
+  add column if not exists recurrence_until timestamptz;
+alter table public.transactions
+  add column if not exists recurrence_exceptions text[] not null default '{}';
+
+create index if not exists transactions_recurrence_idx
+  on public.transactions (user_id, occurred_at)
+  where recurrence_frequency is not null;
+
+-- Installment purchases reuse the recurrence machinery above (monthly,
+-- bounded by recurrence_until) instead of inserting one row per parcela.
+alter table public.transactions
+  add column if not exists installments_total integer
+    check (installments_total is null or installments_total between 2 and 36);
+
 grant select, insert, update, delete on public.transactions to service_role;
 grant select, insert, update, delete on public.profiles to service_role;
 grant select, insert, update, delete on public.cards to service_role;

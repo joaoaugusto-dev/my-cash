@@ -41,4 +41,41 @@ void main() {
 
     expect(parsed.cardId, 'card-1');
   });
+
+  test('toCreateJson includes installmentsTotal when set', () {
+    final json = FinancialTransaction(
+      id: 'pending',
+      userId: 'pending',
+      title: 'Notebook',
+      amount: 3000,
+      type: FinancialTransactionType.expense,
+      category: 'Compras',
+      occurredAt: '2026-07-01T00:00:00.000Z',
+      createdAt: '2026-07-01T00:00:00.000Z',
+      updatedAt: '2026-07-01T00:00:00.000Z',
+      installmentsTotal: 3,
+    ).toCreateJson();
+
+    expect(json['installmentsTotal'], 3);
+  });
+
+  test('isRecurring is true when seriesId or recurrenceFrequency is set', () {
+    expect(_transaction().isRecurring, isFalse);
+
+    final parsed = FinancialTransaction.fromJson({
+      'id': 'anchor-1::2026-07-05T00:00:00.000Z',
+      'userId': 'user-1',
+      'title': 'Aluguel',
+      'amount': 1500,
+      'type': 'expense',
+      'category': 'Moradia',
+      'occurredAt': '2026-07-05T00:00:00.000Z',
+      'createdAt': '2026-01-05T00:00:00.000Z',
+      'updatedAt': '2026-01-05T00:00:00.000Z',
+      'seriesId': 'anchor-1',
+      'recurrenceFrequency': 'monthly',
+    });
+
+    expect(parsed.isRecurring, isTrue);
+  });
 }

@@ -46,7 +46,6 @@ class HomeViewModel extends ChangeNotifier {
 
   final Set<String> deletingIds = {};
   final Set<String> removingIds = {};
-  final ValueNotifier<int> listRefreshTrigger = ValueNotifier<int>(0);
   final ValueNotifier<int> cardsRefreshTrigger = ValueNotifier<int>(0);
 
   bool _disposed = false;
@@ -144,6 +143,22 @@ class HomeViewModel extends ChangeNotifier {
     refreshDashboard();
   }
 
+  /// Whether the selected period is the current month/year — used to show a
+  /// "back to today" shortcut once the user has navigated away from it.
+  bool get isCurrentPeriod => visionMode == VisionMode.yearly
+      ? selectedYear == DateTime.now().year.toString()
+      : selectedMonth == currentMonth();
+
+  void goToCurrentPeriod() {
+    if (isCurrentPeriod) return;
+    if (visionMode == VisionMode.yearly) {
+      selectedYear = DateTime.now().year.toString();
+    } else {
+      selectedMonth = currentMonth();
+    }
+    refreshDashboard();
+  }
+
   void goToPreviousPeriod() {
     if (visionMode == VisionMode.yearly) {
       final year = int.parse(selectedYear);
@@ -172,16 +187,27 @@ class HomeViewModel extends ChangeNotifier {
     return apiService.createTransaction(transaction);
   }
 
+  Future<void> updateTransaction(
+    FinancialTransaction transaction, {
+    String? scope,
+  }) {
+    return apiService.updateTransaction(
+      transaction.id,
+      transaction,
+      scope: scope,
+    );
+  }
+
   Future<void> addCard(CreditCard card) {
     return cardsApiService.createCard(card);
   }
 
-  Future<void> deleteTransaction(String id) async {
+  Future<void> deleteTransaction(String id, {String? scope}) async {
     if (deletingIds.contains(id) || removingIds.contains(id)) return;
     deletingIds.add(id);
     _notify();
     try {
-      await apiService.deleteTransaction(id);
+      await apiService.deleteTransaction(id, scope: scope);
       if (_disposed) return;
       deletingIds.remove(id);
       removingIds.add(id);
@@ -313,7 +339,6 @@ class HomeViewModel extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
-    listRefreshTrigger.dispose();
     cardsRefreshTrigger.dispose();
     super.dispose();
   }

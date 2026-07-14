@@ -14,6 +14,11 @@ class FinancialTransaction {
     this.notes,
     this.source,
     this.cardId,
+    this.seriesId,
+    this.recurrenceFrequency,
+    this.recurrenceInterval,
+    this.recurrenceUnit,
+    this.installmentsTotal,
   });
 
   final String id;
@@ -29,6 +34,19 @@ class FinancialTransaction {
   final String createdAt;
   final String updatedAt;
 
+  /// Set only on virtual occurrences of a recurring series (matches the
+  /// anchor transaction's real id); null for one-off transactions.
+  final String? seriesId;
+  final String? recurrenceFrequency;
+  final int? recurrenceInterval;
+  final String? recurrenceUnit;
+
+  /// Total parcelas for an installment purchase; set on both the anchor and
+  /// every occurrence expanded from it.
+  final int? installmentsTotal;
+
+  bool get isRecurring => seriesId != null || recurrenceFrequency != null;
+
   factory FinancialTransaction.fromJson(Map<String, dynamic> json) {
     return FinancialTransaction(
       id: json['id'] as String,
@@ -43,6 +61,11 @@ class FinancialTransaction {
       cardId: json['cardId'] as String?,
       createdAt: json['createdAt'] as String,
       updatedAt: json['updatedAt'] as String,
+      seriesId: json['seriesId'] as String?,
+      recurrenceFrequency: json['recurrenceFrequency'] as String?,
+      recurrenceInterval: (json['recurrenceInterval'] as num?)?.toInt(),
+      recurrenceUnit: json['recurrenceUnit'] as String?,
+      installmentsTotal: (json['installmentsTotal'] as num?)?.toInt(),
     );
   }
 
@@ -56,6 +79,12 @@ class FinancialTransaction {
       if (notes != null && notes!.trim().isNotEmpty) 'notes': notes,
       if (source != null && source!.trim().isNotEmpty) 'source': source,
       if (cardId != null) 'cardId': cardId,
+      if (installmentsTotal != null) 'installmentsTotal': installmentsTotal,
+      // Always sent (even as null) so editing can explicitly clear recurrence —
+      // omitting the key would make the backend leave the old value untouched.
+      'recurrenceFrequency': recurrenceFrequency,
+      'recurrenceInterval': recurrenceInterval,
+      'recurrenceUnit': recurrenceUnit,
     };
   }
 
