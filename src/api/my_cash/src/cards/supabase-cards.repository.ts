@@ -14,7 +14,6 @@ interface CardRow {
   last_digits: string;
   limit_amount: number;
   closing_day: number;
-  due_day: number;
   color: string;
   created_at: string;
   updated_at: string;
@@ -145,7 +144,6 @@ export class SupabaseCardsRepository implements CardsRepository {
       last_digits: card.lastDigits,
       limit_amount: card.limitAmount,
       closing_day: card.closingDay,
-      due_day: card.dueDay,
       color: card.color,
       created_at: card.createdAt,
       updated_at: card.updatedAt,
@@ -161,7 +159,6 @@ export class SupabaseCardsRepository implements CardsRepository {
       lastDigits: row.last_digits,
       limitAmount: row.limit_amount,
       closingDay: row.closing_day,
-      dueDay: row.due_day,
       color: row.color,
       createdAt: row.created_at,
       updatedAt: row.updated_at,

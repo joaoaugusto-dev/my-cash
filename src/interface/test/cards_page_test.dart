@@ -52,7 +52,6 @@ void main() {
               'lastDigits': '1234',
               'limitAmount': 1000,
               'closingDay': 10,
-              'dueDay': 17,
               'createdAt': '2026-01-01T00:00:00.000Z',
               'updatedAt': '2026-01-01T00:00:00.000Z',
             },
@@ -168,11 +167,6 @@ void main() {
       find.widgetWithText(TextFormField, 'Fechamento'),
       '10',
     );
-    await tester.enterText(
-      find.widgetWithText(TextFormField, 'Vencimento'),
-      '17',
-    );
-
     await tester.ensureVisible(find.text('Salvar cartão'));
     await tester.tap(find.text('Salvar cartão'));
     await tester.pumpAndSettle();
@@ -182,7 +176,6 @@ void main() {
     expect(submittedCard!.lastDigits, '1234');
     expect(submittedCard!.limitAmount, 5000.0);
     expect(submittedCard!.closingDay, 10);
-    expect(submittedCard!.dueDay, 17);
   });
 
   testWidgets(
@@ -224,7 +217,6 @@ void main() {
         lastDigits: '1234',
         limitAmount: 5000,
         closingDay: 10,
-        dueDay: 17,
         createdAt: '2026-01-01T00:00:00.000Z',
         updatedAt: '2026-01-01T00:00:00.000Z',
         color: '#16A34A',

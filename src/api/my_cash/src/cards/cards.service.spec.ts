@@ -17,7 +17,6 @@ describe('CardsService', () => {
       lastDigits: '1234',
       limitAmount: 5000,
       closingDay: 10,
-      dueDay: 17,
     });
 
     expect(created.id).toBeTruthy();
@@ -36,7 +35,6 @@ describe('CardsService', () => {
         lastDigits: '12',
         limitAmount: 5000,
         closingDay: 10,
-        dueDay: 17,
       }),
     ).rejects.toBeInstanceOf(BadRequestException);
 
@@ -47,7 +45,6 @@ describe('CardsService', () => {
         lastDigits: '1234',
         limitAmount: -5,
         closingDay: 10,
-        dueDay: 17,
       }),
     ).rejects.toBeInstanceOf(BadRequestException);
 
@@ -58,7 +55,6 @@ describe('CardsService', () => {
         lastDigits: '1234',
         limitAmount: 5000,
         closingDay: 40,
-        dueDay: 17,
       }),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
@@ -70,7 +66,6 @@ describe('CardsService', () => {
       lastDigits: '1234',
       limitAmount: 5000,
       closingDay: 10,
-      dueDay: 17,
     });
 
     const updated = await service.update(authContext, 'user-1', created.id, {

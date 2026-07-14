@@ -58,7 +58,6 @@ create table if not exists public.cards (
   last_digits text not null check (last_digits ~ '^\d{4}$'),
   limit_amount numeric(14, 2) not null check (limit_amount > 0),
   closing_day smallint not null check (closing_day between 1 and 31),
-  due_day smallint not null check (due_day between 1 and 31),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -92,6 +91,11 @@ alter table public.transactions
   add column if not exists recurrence_until timestamptz;
 alter table public.transactions
   add column if not exists recurrence_exceptions text[] not null default '{}';
+
+-- Due date isn't a fixed day of month like closing day is — issuers vary it
+-- month to month, so a stored "due_day" was never actually accurate.
+alter table public.cards
+  drop column if exists due_day;
 
 create index if not exists transactions_recurrence_idx
   on public.transactions (user_id, occurred_at)

@@ -6,7 +6,6 @@ export interface Card {
   lastDigits: string;
   limitAmount: number;
   closingDay: number;
-  dueDay: number;
   color: string;
   createdAt: string;
   updatedAt: string;

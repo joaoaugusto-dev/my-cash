@@ -333,11 +333,6 @@ class _CardTile extends StatelessWidget {
                         label: 'Fecha',
                         value: 'dia ${card.closingDay}',
                       ),
-                      const SizedBox(width: 18),
-                      _CardInfoLabel(
-                        label: 'Vence',
-                        value: 'dia ${card.dueDay}',
-                      ),
                     ],
                   ),
                 ],
@@ -717,7 +712,6 @@ class _CardComposerSheetState extends State<CardComposerSheet> {
   final _limitController = TextEditingController();
   final _customBrandController = TextEditingController();
   final _closingDayController = TextEditingController();
-  final _dueDayController = TextEditingController();
   late CardBrand _brand;
   late String _colorHex;
   bool _isSaving = false;
@@ -741,7 +735,6 @@ class _CardComposerSheetState extends State<CardComposerSheet> {
       existing.limitAmount,
     ).replaceFirst('R\$ ', '');
     _closingDayController.text = existing.closingDay.toString();
-    _dueDayController.text = existing.dueDay.toString();
     _brand = CardBrand.fromApiValue(existing.brand);
     if (_brand == CardBrand.outra) {
       _customBrandController.text = existing.brand;
@@ -790,7 +783,6 @@ class _CardComposerSheetState extends State<CardComposerSheet> {
           lastDigits: _lastDigitsController.text.trim(),
           limitAmount: parseCurrencyInput(_limitController.text),
           closingDay: int.parse(_closingDayController.text),
-          dueDay: int.parse(_dueDayController.text),
           color: _colorHex,
           createdAt: existing?.createdAt ?? '',
           updatedAt: existing?.updatedAt ?? '',
@@ -1014,60 +1006,21 @@ class _CardComposerSheetState extends State<CardComposerSheet> {
                         : null,
                   ),
                   const SizedBox(height: 14),
-                  LayoutBuilder(
-                    builder: (context, constraints) {
-                      final closingField = TextFormField(
-                        controller: _closingDayController,
-                        keyboardType: TextInputType.number,
-                        inputFormatters: [
-                          FilteringTextInputFormatter.digitsOnly,
-                        ],
-                        maxLength: 2,
-                        decoration: const InputDecoration(
-                          labelText: 'Fechamento',
-                          hintText: '10',
-                          counterText: '',
-                          prefixText: 'Dia ',
-                          prefixIcon: Icon(Icons.event_busy_rounded),
-                        ),
-                        validator: _validateDay,
-                      );
-                      final dueField = TextFormField(
-                        controller: _dueDayController,
-                        keyboardType: TextInputType.number,
-                        inputFormatters: [
-                          FilteringTextInputFormatter.digitsOnly,
-                        ],
-                        maxLength: 2,
-                        decoration: const InputDecoration(
-                          labelText: 'Vencimento',
-                          hintText: '17',
-                          counterText: '',
-                          prefixText: 'Dia ',
-                          prefixIcon: Icon(Icons.event_available_rounded),
-                        ),
-                        validator: _validateDay,
-                      );
-
-                      if (constraints.maxWidth < 430) {
-                        return Column(
-                          children: [
-                            closingField,
-                            const SizedBox(height: 12),
-                            dueField,
-                          ],
-                        );
-                      }
-
-                      return Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(child: closingField),
-                          const SizedBox(width: 12),
-                          Expanded(child: dueField),
-                        ],
-                      );
-                    },
+                  TextFormField(
+                    controller: _closingDayController,
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [
+                      FilteringTextInputFormatter.digitsOnly,
+                    ],
+                    maxLength: 2,
+                    decoration: const InputDecoration(
+                      labelText: 'Fechamento',
+                      hintText: '10',
+                      counterText: '',
+                      prefixText: 'Dia ',
+                      prefixIcon: Icon(Icons.event_busy_rounded),
+                    ),
+                    validator: _validateDay,
                   ),
                 ],
               ),

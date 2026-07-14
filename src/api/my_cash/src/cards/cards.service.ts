@@ -53,7 +53,6 @@ export class CardsService {
       lastDigits: this.normalizeLastDigits(dto.lastDigits),
       limitAmount: this.normalizeAmount(dto.limitAmount),
       closingDay: this.normalizeDay(dto.closingDay, 'closingDay'),
-      dueDay: this.normalizeDay(dto.dueDay, 'dueDay'),
       color:
         dto.color !== undefined
           ? this.normalizeColor(dto.color)
@@ -94,10 +93,6 @@ export class CardsService {
       nextCard.closingDay = this.normalizeDay(dto.closingDay, 'closingDay');
     }
 
-    if (dto.dueDay !== undefined) {
-      nextCard.dueDay = this.normalizeDay(dto.dueDay, 'dueDay');
-    }
-
     if (dto.color !== undefined) {
       nextCard.color = this.normalizeColor(dto.color);
     }
@@ -121,7 +116,6 @@ export class CardsService {
     this.normalizeLastDigits(dto.lastDigits);
     this.normalizeAmount(dto.limitAmount);
     this.normalizeDay(dto.closingDay, 'closingDay');
-    this.normalizeDay(dto.dueDay, 'dueDay');
   }
 
   private normalizeRequiredString(value: string, fieldName: string): string {

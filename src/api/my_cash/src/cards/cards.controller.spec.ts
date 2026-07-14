@@ -45,7 +45,6 @@ describe('CardsController', () => {
       lastDigits: '1234',
       limitAmount: 5000,
       closingDay: 10,
-      dueDay: 17,
     });
 
     expect(created.name).toBe('Nubank');

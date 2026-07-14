@@ -11,7 +11,6 @@ CreditCard _card({required String id, required int closingDay}) {
     lastDigits: '1234',
     limitAmount: 1000,
     closingDay: closingDay,
-    dueDay: closingDay + 7 > 31 ? 7 : closingDay + 7,
     createdAt: '',
     updatedAt: '',
   );
