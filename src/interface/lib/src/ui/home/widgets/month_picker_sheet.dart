@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/theme/app_theme.dart';
 import '../../core/widgets/header_icon_button.dart';
 import '../../core/widgets/picker_sheet_wrapper.dart';
 
@@ -153,7 +154,7 @@ class _MonthWheelState extends State<_MonthWheel> {
                       color: isSelected
                           ? colorScheme.primary.withValues(alpha: 0.12)
                           : Colors.transparent,
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(AppRadii.xs),
                     ),
                     child: Text(
                       _months[index],
@@ -182,7 +183,7 @@ class _MonthWheelState extends State<_MonthWheel> {
                 backgroundColor: colorScheme.primary,
                 foregroundColor: colorScheme.onPrimary,
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(AppRadii.sm),
                 ),
               ),
               child: Text(

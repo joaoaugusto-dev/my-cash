@@ -4,6 +4,8 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'package:my_cash/src/ui/core/theme/app_theme.dart';
+
 /// Shared building blocks for the app's bottom-sheet "composer" forms
 /// (new transaction, new card, ...), kept in one place so every composer
 /// looks and behaves the same way.
@@ -40,7 +42,9 @@ Future<SheetOption<T>?> showComposerOptionsSheet<T>({
       return ConstrainedBox(
         constraints: BoxConstraints(maxHeight: screenHeight * 0.72),
         child: ClipRRect(
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
+          borderRadius: const BorderRadius.vertical(
+            top: Radius.circular(AppRadii.xl),
+          ),
           child: BackdropFilter(
             filter: ui.ImageFilter.blur(sigmaX: 18, sigmaY: 18),
             child: Container(
@@ -49,7 +53,7 @@ Future<SheetOption<T>?> showComposerOptionsSheet<T>({
                   alpha: isDark ? 0.92 : 0.9,
                 ),
                 borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(30),
+                  top: Radius.circular(AppRadii.xl),
                 ),
                 border: Border.all(
                   color: colorScheme.outline.withValues(alpha: 0.4),
@@ -95,7 +99,9 @@ Future<SheetOption<T>?> showComposerOptionsSheet<T>({
                                 vertical: 2,
                               ),
                               shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(20),
+                                borderRadius: BorderRadius.circular(
+                                  AppRadii.md,
+                                ),
                               ),
                               leading:
                                   option.leading ??
@@ -152,7 +158,7 @@ class ComposerPanel extends StatelessWidget {
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: colorScheme.surface.withValues(alpha: 0.7),
-        borderRadius: BorderRadius.circular(26),
+        borderRadius: BorderRadius.circular(AppRadii.lg),
         border: Border.all(color: colorScheme.outline.withValues(alpha: 0.45)),
       ),
       child: child,
@@ -272,14 +278,14 @@ class ComposerCloseButton extends StatelessWidget {
     return Tooltip(
       message: 'Fechar',
       child: InkWell(
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(AppRadii.md),
         onTap: onPressed,
         child: Container(
           width: 46,
           height: 46,
           decoration: BoxDecoration(
             color: colorScheme.surface.withValues(alpha: 0.78),
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(AppRadii.md),
             border: Border.all(
               color: colorScheme.outline.withValues(alpha: 0.5),
             ),
@@ -356,7 +362,9 @@ class _ComposerSheetShellState extends State<ComposerSheetShell> {
     return Padding(
       padding: EdgeInsets.only(bottom: bottomInset),
       child: ClipRRect(
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(34)),
+        borderRadius: const BorderRadius.vertical(
+          top: Radius.circular(AppRadii.xxl),
+        ),
         child: BackdropFilter(
           filter: ui.ImageFilter.blur(sigmaX: 22, sigmaY: 22),
           child: Container(
@@ -365,7 +373,7 @@ class _ComposerSheetShellState extends State<ComposerSheetShell> {
                 alpha: isDark ? 0.86 : 0.82,
               ),
               borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(34),
+                top: Radius.circular(AppRadii.xxl),
               ),
               border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
               boxShadow: [

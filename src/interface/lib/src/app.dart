@@ -22,18 +22,16 @@ class App extends StatelessWidget {
         title: 'MyCash',
         theme: ThemeData(
           colorScheme: lightColorScheme,
+          textTheme: appTextTheme(lightColorScheme),
           scaffoldBackgroundColor: AppPalette.lightBackground,
           dividerColor: AppPalette.lightBorder,
-          appBarTheme: const AppBarTheme(
-            backgroundColor: AppPalette.lightPrimary,
-            foregroundColor: Colors.white,
-            elevation: 0,
-          ),
+          splashFactory: InkSparkle.splashFactory,
+          visualDensity: VisualDensity.comfortable,
           cardTheme: CardThemeData(
             color: AppPalette.lightCard.withValues(alpha: 0.82),
             elevation: 0,
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(24),
+              borderRadius: BorderRadius.circular(AppRadii.lg),
               side: const BorderSide(color: AppPalette.lightBorder),
             ),
           ),
@@ -41,44 +39,49 @@ class App extends StatelessWidget {
             filled: true,
             fillColor: AppPalette.lightCard.withValues(alpha: 0.74),
             border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(AppRadii.sm),
               borderSide: const BorderSide(color: AppPalette.lightBorder),
             ),
             enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(AppRadii.sm),
               borderSide: const BorderSide(color: AppPalette.lightBorder),
             ),
             focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(16),
-              borderSide: const BorderSide(color: AppPalette.lightSecondary),
+              borderRadius: BorderRadius.circular(AppRadii.sm),
+              borderSide: const BorderSide(
+                color: AppPalette.lightSecondary,
+                width: 1.6,
+              ),
             ),
           ),
           floatingActionButtonTheme: const FloatingActionButtonThemeData(
             backgroundColor: AppPalette.lightSecondary,
             foregroundColor: Colors.white,
           ),
-          snackBarTheme: const SnackBarThemeData(
+          snackBarTheme: SnackBarThemeData(
             behavior: SnackBarBehavior.floating,
             backgroundColor: AppPalette.lightPrimary,
-            contentTextStyle: TextStyle(color: Colors.white),
+            contentTextStyle: appTextTheme(lightColorScheme).bodyMedium
+                ?.copyWith(color: Colors.white, fontWeight: FontWeight.w600),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppRadii.sm),
+            ),
           ),
           brightness: Brightness.light,
           useMaterial3: true,
         ),
         darkTheme: ThemeData(
           colorScheme: darkColorScheme,
+          textTheme: appTextTheme(darkColorScheme),
           scaffoldBackgroundColor: AppPalette.darkBackground,
           dividerColor: AppPalette.darkBorder,
-          appBarTheme: const AppBarTheme(
-            backgroundColor: AppPalette.darkCard,
-            foregroundColor: AppPalette.darkText,
-            elevation: 0,
-          ),
+          splashFactory: InkSparkle.splashFactory,
+          visualDensity: VisualDensity.comfortable,
           cardTheme: CardThemeData(
             color: AppPalette.darkCard.withValues(alpha: 0.72),
             elevation: 0,
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(24),
+              borderRadius: BorderRadius.circular(AppRadii.lg),
               side: const BorderSide(color: AppPalette.darkBorder),
             ),
           ),
@@ -86,26 +89,36 @@ class App extends StatelessWidget {
             filled: true,
             fillColor: AppPalette.darkSoftPurple.withValues(alpha: 0.7),
             border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(AppRadii.sm),
               borderSide: const BorderSide(color: AppPalette.darkBorder),
             ),
             enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(AppRadii.sm),
               borderSide: const BorderSide(color: AppPalette.darkBorder),
             ),
             focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(16),
-              borderSide: const BorderSide(color: AppPalette.darkPrimary),
+              borderRadius: BorderRadius.circular(AppRadii.sm),
+              borderSide: const BorderSide(
+                color: AppPalette.darkPrimary,
+                width: 1.6,
+              ),
             ),
           ),
           floatingActionButtonTheme: const FloatingActionButtonThemeData(
             backgroundColor: AppPalette.darkSecondary,
             foregroundColor: Colors.white,
           ),
-          snackBarTheme: const SnackBarThemeData(
+          snackBarTheme: SnackBarThemeData(
             behavior: SnackBarBehavior.floating,
             backgroundColor: AppPalette.darkSoftPurple,
-            contentTextStyle: TextStyle(color: AppPalette.darkText),
+            contentTextStyle: appTextTheme(darkColorScheme).bodyMedium
+                ?.copyWith(
+                  color: AppPalette.darkText,
+                  fontWeight: FontWeight.w600,
+                ),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppRadii.sm),
+            ),
           ),
           brightness: Brightness.dark,
           useMaterial3: true,

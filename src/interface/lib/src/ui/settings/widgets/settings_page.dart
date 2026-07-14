@@ -6,6 +6,7 @@ import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'package:my_cash/src/ui/core/theme/app_theme.dart';
 import 'package:my_cash/src/ui/core/theme/app_theme_controller.dart';
 import 'package:my_cash/src/utils/profile_helpers.dart';
 
@@ -664,7 +665,7 @@ class _SettingsPageState extends State<SettingsPage> {
                               color: colorScheme.primary.withValues(
                                 alpha: isDark ? 0.2 : 0.1,
                               ),
-                              borderRadius: BorderRadius.circular(18),
+                              borderRadius: BorderRadius.circular(AppRadii.md),
                               border: Border.all(
                                 color: colorScheme.outline.withValues(
                                   alpha: 0.5,
@@ -723,7 +724,7 @@ class _SettingsPageState extends State<SettingsPage> {
                           color: colorScheme.outline.withValues(alpha: 0.5),
                         ),
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(22),
+                          borderRadius: BorderRadius.circular(AppRadii.lg),
                         ),
                       ),
                       onPressed: _signOut,
@@ -761,7 +762,7 @@ class _SettingsSection extends StatelessWidget {
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: colorScheme.surface.withValues(alpha: isDark ? 0.72 : 0.86),
-        borderRadius: BorderRadius.circular(28),
+        borderRadius: BorderRadius.circular(AppRadii.xl),
         border: Border.all(color: colorScheme.outline.withValues(alpha: 0.5)),
         boxShadow: [
           BoxShadow(
@@ -967,14 +968,14 @@ class _RoundIconButton extends StatelessWidget {
     return Tooltip(
       message: tooltip,
       child: InkWell(
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(AppRadii.md),
         onTap: onPressed,
         child: Container(
           width: 44,
           height: 44,
           decoration: BoxDecoration(
             color: colorScheme.surface.withValues(alpha: 0.78),
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(AppRadii.md),
             border: Border.all(
               color: colorScheme.outline.withValues(alpha: 0.52),
             ),
@@ -1067,7 +1068,7 @@ class _ThemeModeOption extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
 
     return InkWell(
-      borderRadius: BorderRadius.circular(20),
+      borderRadius: BorderRadius.circular(AppRadii.md),
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 220),
@@ -1080,7 +1081,7 @@ class _ThemeModeOption extends StatelessWidget {
                 )
               : null,
           color: selected ? null : colorScheme.surface.withValues(alpha: 0.62),
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(AppRadii.md),
           border: Border.all(
             color: selected
                 ? Colors.white.withValues(alpha: 0.18)

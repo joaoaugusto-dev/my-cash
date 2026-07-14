@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 
 import 'package:my_cash/src/domain/models/chat_message.dart';
+import 'package:my_cash/src/ui/core/theme/app_theme.dart';
 
 class ChatBubble extends StatelessWidget {
   const ChatBubble({super.key, required this.message});
@@ -45,10 +46,10 @@ class ChatBubble extends StatelessWidget {
         decoration: BoxDecoration(
           color: bubbleColor,
           borderRadius: BorderRadius.only(
-            topLeft: const Radius.circular(18),
-            topRight: const Radius.circular(18),
-            bottomLeft: Radius.circular(isUser ? 18 : 4),
-            bottomRight: Radius.circular(isUser ? 4 : 18),
+            topLeft: const Radius.circular(AppRadii.md),
+            topRight: const Radius.circular(AppRadii.md),
+            bottomLeft: Radius.circular(isUser ? AppRadii.md : 4),
+            bottomRight: Radius.circular(isUser ? 4 : AppRadii.md),
           ),
           border: isUser
               ? null
@@ -65,9 +66,9 @@ class ChatBubble extends StatelessWidget {
               children: [
                 Text(
                   _formatTime(message.createdAt),
-                  style: TextStyle(
-                    fontSize: 11,
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
                     color: textColor.withValues(alpha: 0.7),
+                    fontFeatures: tabularFigures,
                   ),
                 ),
                 if (isUser) ...[
@@ -111,7 +112,7 @@ class ChatBubble extends StatelessWidget {
         return GestureDetector(
           onTap: () => _openImagePreview(context),
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(AppRadii.sm),
             child: _image(message.mediaPath!, width: 220, height: 220),
           ),
         );
@@ -277,7 +278,7 @@ class _AudioBubbleContentState extends State<_AudioBubbleContent> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 ClipRRect(
-                  borderRadius: BorderRadius.circular(4),
+                  borderRadius: BorderRadius.circular(AppRadii.pill),
                   child: LinearProgressIndicator(
                     value: progress,
                     minHeight: 3,

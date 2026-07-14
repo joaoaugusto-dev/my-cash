@@ -1,5 +1,13 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
+/// Shared backdrop for every top-level screen: a fixed directional gradient
+/// in the app's purple, one restrained anchored glow, and a whisper of grain
+/// so it reads as a designed surface rather than a flat gradient.
+///
+/// Deliberately *not* a cluster of floating blurred orbs — that pattern is
+/// the single most overused "AI-generated app" background right now.
 class FinanceBackground extends StatelessWidget {
   const FinanceBackground({super.key});
 
@@ -29,35 +37,27 @@ class FinanceBackground extends StatelessWidget {
         child: Stack(
           children: [
             Positioned(
-              top: -90,
-              left: -80,
-              child: _RadialGlow(
-                size: 250,
-                color: const Color(
-                  0xFF7C3AED,
-                ).withValues(alpha: isDark ? 0.22 : 0.15),
+              top: -160,
+              right: -120,
+              child: IgnorePointer(
+                child: Container(
+                  width: 440,
+                  height: 440,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: RadialGradient(
+                      colors: [
+                        const Color(
+                          0xFF7C3AED,
+                        ).withValues(alpha: isDark ? 0.20 : 0.12),
+                        const Color(0xFF7C3AED).withValues(alpha: 0),
+                      ],
+                    ),
+                  ),
+                ),
               ),
             ),
-            Positioned(
-              top: 130,
-              right: -110,
-              child: _RadialGlow(
-                size: 260,
-                color: const Color(
-                  0xFFB993FF,
-                ).withValues(alpha: isDark ? 0.18 : 0.22),
-              ),
-            ),
-            Positioned(
-              bottom: -130,
-              left: 20,
-              child: _RadialGlow(
-                size: 280,
-                color: const Color(
-                  0xFF22C55E,
-                ).withValues(alpha: isDark ? 0.10 : 0.08),
-              ),
-            ),
+            const Positioned.fill(child: IgnorePointer(child: _Grain())),
           ],
         ),
       ),
@@ -65,23 +65,50 @@ class FinanceBackground extends StatelessWidget {
   }
 }
 
-class _RadialGlow extends StatelessWidget {
-  const _RadialGlow({required this.size, required this.color});
-
-  final double size;
-  final Color color;
+class _Grain extends StatelessWidget {
+  const _Grain();
 
   @override
   Widget build(BuildContext context) {
-    return IgnorePointer(
-      child: Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          gradient: RadialGradient(colors: [color, color.withValues(alpha: 0)]),
-        ),
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final speckColor = Theme.of(context).colorScheme.onSurface;
+
+    return Opacity(
+      opacity: isDark ? 0.05 : 0.035,
+      child: CustomPaint(
+        size: Size.infinite,
+        painter: _GrainPainter(speckColor),
       ),
     );
   }
+}
+
+/// Sparse, seeded static noise. Computed once per app run and reused, so the
+/// per-frame cost is a single cheap paint of pre-placed dots.
+class _GrainPainter extends CustomPainter {
+  _GrainPainter(this.color);
+
+  final Color color;
+
+  static final List<Offset> _specks = List.generate(
+    260,
+    (_) => Offset(_random.nextDouble(), _random.nextDouble()),
+  );
+  static final math.Random _random = math.Random(7);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()..color = color;
+    for (final speck in _specks) {
+      canvas.drawCircle(
+        Offset(speck.dx * size.width, speck.dy * size.height),
+        0.6,
+        paint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _GrainPainter oldDelegate) =>
+      oldDelegate.color != color;
 }

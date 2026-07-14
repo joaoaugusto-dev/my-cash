@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import 'package:my_cash/src/ui/core/theme/app_theme.dart';
 import 'package:my_cash/src/ui/core/widgets/composer_widgets.dart';
 import 'package:my_cash/src/domain/models/card_brand.dart';
 import 'package:my_cash/src/data/services/cards_api_service.dart';
@@ -166,24 +167,55 @@ class _CardsPageState extends State<CardsPage> {
             );
           }
 
-          return ListView.separated(
-            physics: const AlwaysScrollableScrollPhysics(
-              parent: BouncingScrollPhysics(),
-            ),
-            padding: EdgeInsets.fromLTRB(
-              20,
-              mediaQuery.padding.top + 18,
-              20,
-              200,
-            ),
-            itemCount: cards.length,
-            separatorBuilder: (_, _) => const SizedBox(height: 14),
-            itemBuilder: (context, index) {
-              final card = cards[index];
-              return _CardTile(
-                card: card,
-                spent: widget.spentByCardId[card.id] ?? 0,
-                onTap: () => _openEditCardSheet(card),
+          return LayoutBuilder(
+            builder: (context, constraints) {
+              final padding = EdgeInsets.fromLTRB(
+                20,
+                mediaQuery.padding.top + 18,
+                20,
+                200,
+              );
+              // Desktop web: enough room for cards side by side instead of
+              // one long stacked column.
+              if (constraints.maxWidth >= 700) {
+                return GridView.builder(
+                  physics: const AlwaysScrollableScrollPhysics(
+                    parent: BouncingScrollPhysics(),
+                  ),
+                  padding: padding,
+                  gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                    maxCrossAxisExtent: 480,
+                    mainAxisSpacing: 14,
+                    crossAxisSpacing: 14,
+                    mainAxisExtent: 260,
+                  ),
+                  itemCount: cards.length,
+                  itemBuilder: (context, index) {
+                    final card = cards[index];
+                    return _CardTile(
+                      card: card,
+                      spent: widget.spentByCardId[card.id] ?? 0,
+                      onTap: () => _openEditCardSheet(card),
+                    );
+                  },
+                );
+              }
+
+              return ListView.separated(
+                physics: const AlwaysScrollableScrollPhysics(
+                  parent: BouncingScrollPhysics(),
+                ),
+                padding: padding,
+                itemCount: cards.length,
+                separatorBuilder: (_, _) => const SizedBox(height: 14),
+                itemBuilder: (context, index) {
+                  final card = cards[index];
+                  return _CardTile(
+                    card: card,
+                    spent: widget.spentByCardId[card.id] ?? 0,
+                    onTap: () => _openEditCardSheet(card),
+                  );
+                },
               );
             },
           );
@@ -214,9 +246,9 @@ class _CardTile extends StatelessWidget {
         constraints: const BoxConstraints(maxWidth: 480),
         child: Material(
           color: Colors.transparent,
-          borderRadius: BorderRadius.circular(22),
+          borderRadius: BorderRadius.circular(AppRadii.lg),
           child: InkWell(
-            borderRadius: BorderRadius.circular(22),
+            borderRadius: BorderRadius.circular(AppRadii.lg),
             onTap: onTap,
             child: Container(
               padding: const EdgeInsets.all(20),
@@ -226,7 +258,7 @@ class _CardTile extends StatelessWidget {
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
-                borderRadius: BorderRadius.circular(22),
+                borderRadius: BorderRadius.circular(AppRadii.lg),
                 boxShadow: [
                   BoxShadow(
                     color: gradient.last.withValues(alpha: 0.35),
@@ -282,6 +314,7 @@ class _CardTile extends StatelessWidget {
                       color: Colors.white,
                       fontWeight: FontWeight.w700,
                       letterSpacing: 2.4,
+                      fontFeatures: tabularFigures,
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -348,25 +381,31 @@ class _InvoiceUsageBar extends StatelessWidget {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(
-              'Fatura estimada: ${formatCurrencyBRL(spent)}',
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: Colors.white.withValues(alpha: 0.85),
-                fontWeight: FontWeight.w800,
+            Flexible(
+              child: Text(
+                'Fatura estimada: ${formatCurrencyBRL(spent)}',
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: Colors.white.withValues(alpha: 0.85),
+                  fontWeight: FontWeight.w800,
+                  fontFeatures: tabularFigures,
+                ),
               ),
             ),
+            const SizedBox(width: 6),
             Text(
               '${(ratio * 100).round()}%',
               style: Theme.of(context).textTheme.labelSmall?.copyWith(
                 color: isNearLimit ? Colors.redAccent.shade100 : Colors.white,
                 fontWeight: FontWeight.w900,
+                fontFeatures: tabularFigures,
               ),
             ),
           ],
         ),
         const SizedBox(height: 6),
         ClipRRect(
-          borderRadius: BorderRadius.circular(99),
+          borderRadius: BorderRadius.circular(AppRadii.pill),
           child: LinearProgressIndicator(
             value: ratio,
             minHeight: 6,
@@ -405,6 +444,7 @@ class _CardInfoLabel extends StatelessWidget {
           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
             color: Colors.white,
             fontWeight: FontWeight.w800,
+            fontFeatures: tabularFigures,
           ),
         ),
       ],
@@ -558,7 +598,7 @@ class CardPreview extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(AppRadii.lg),
         boxShadow: [
           BoxShadow(
             color: gradient.last.withValues(alpha: 0.4),
@@ -591,6 +631,7 @@ class CardPreview extends StatelessWidget {
               color: Colors.white,
               fontWeight: FontWeight.w700,
               letterSpacing: 3,
+              fontFeatures: tabularFigures,
             ),
           ),
           const SizedBox(height: 16),
@@ -1106,7 +1147,7 @@ class _ColorSwatchButton extends StatelessWidget {
     return Tooltip(
       message: label,
       child: InkWell(
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(AppRadii.lg),
         onTap: onTap,
         child: Container(
           width: 44,

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:my_cash/src/domain/models/card_brand.dart';
 import 'package:my_cash/src/domain/models/card_recommendation.dart';
 import 'package:my_cash/src/domain/models/credit_card.dart';
+import '../../core/theme/app_theme.dart';
 import '../../core/widgets/soft_panel.dart';
 
 class SmartCardRecommendation extends StatelessWidget {
@@ -51,7 +52,7 @@ class SmartCardRecommendation extends StatelessWidget {
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
-                    borderRadius: BorderRadius.circular(14),
+                    borderRadius: BorderRadius.circular(AppRadii.sm),
                     boxShadow: [
                       BoxShadow(
                         color: gradient.last.withValues(alpha: 0.28),
@@ -213,13 +214,13 @@ class _LightActionChip extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
 
     return InkWell(
-      borderRadius: BorderRadius.circular(999),
+      borderRadius: BorderRadius.circular(AppRadii.pill),
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
           color: colorScheme.primary.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(999),
+          borderRadius: BorderRadius.circular(AppRadii.pill),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,

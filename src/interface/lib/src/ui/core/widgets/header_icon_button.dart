@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'package:my_cash/src/ui/core/theme/app_theme.dart';
+
 class HeaderIconButton extends StatelessWidget {
   const HeaderIconButton({super.key, required this.icon, required this.onTap});
 
@@ -12,9 +14,9 @@ class HeaderIconButton extends StatelessWidget {
 
     return Material(
       color: colorScheme.surface.withValues(alpha: 0.6),
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(AppRadii.xs),
       child: InkWell(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppRadii.xs),
         onTap: onTap,
         child: Container(
           width: 42,

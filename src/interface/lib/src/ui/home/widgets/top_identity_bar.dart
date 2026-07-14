@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'package:my_cash/src/ui/core/theme/app_theme.dart';
+
 class TopIdentityBar extends StatelessWidget {
   const TopIdentityBar({
     super.key,
@@ -29,7 +31,7 @@ class TopIdentityBar extends StatelessWidget {
           height: 42,
           decoration: BoxDecoration(
             color: colorScheme.surface.withValues(alpha: 0.9),
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(AppRadii.sm),
             border: Border.all(
               color: colorScheme.outline.withValues(alpha: 0.5),
             ),
@@ -85,7 +87,7 @@ class TopIdentityBar extends StatelessWidget {
           tooltip: 'Perfil',
           offset: const Offset(0, 54),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(AppRadii.md),
           ),
           onSelected: (value) {
             if (value == 'profile') {

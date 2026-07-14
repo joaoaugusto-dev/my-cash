@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'package:my_cash/src/ui/core/theme/app_theme.dart';
+
 class FloatingCreateButton extends StatelessWidget {
   const FloatingCreateButton({
     super.key,
@@ -79,7 +81,7 @@ class FloatingBottomBar extends StatelessWidget {
               color: colorScheme.surface.withValues(
                 alpha: isDark ? 0.92 : 0.94,
               ),
-              borderRadius: BorderRadius.circular(28),
+              borderRadius: BorderRadius.circular(AppRadii.xl),
               border: Border.all(
                 color: colorScheme.outline.withValues(
                   alpha: isDark ? 0.42 : 0.62,
@@ -118,7 +120,9 @@ class FloatingBottomBar extends StatelessWidget {
                                 color: colorScheme.primary.withValues(
                                   alpha: 0.08,
                                 ),
-                                borderRadius: BorderRadius.circular(20),
+                                borderRadius: BorderRadius.circular(
+                                  AppRadii.md,
+                                ),
                               ),
                               alignment: Alignment.topCenter,
                               child: Container(
@@ -224,7 +228,7 @@ class _BottomNavItem extends StatelessWidget {
 
     return Expanded(
       child: InkWell(
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(AppRadii.md),
         onTap: () => onSelected(index),
         child: Container(
           padding: EdgeInsets.symmetric(vertical: dense ? 4 : 5),

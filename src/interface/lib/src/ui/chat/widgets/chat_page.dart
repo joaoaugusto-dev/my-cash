@@ -165,22 +165,33 @@ class _ChatPageState extends State<ChatPage> {
         Expanded(
           child: _messages.isEmpty
               ? _EmptyState(colorScheme: colorScheme, topPadding: topPadding)
-              : ListView.builder(
-                  controller: _scrollController,
-                  padding: EdgeInsets.fromLTRB(0, topPadding + 12, 0, 12),
-                  itemCount: _messages.length + (_isAssistantTyping ? 1 : 0),
-                  itemBuilder: (context, index) {
-                    if (index == _messages.length) {
-                      return const _TypingBubble();
-                    }
-                    return ChatBubble(message: _messages[index]);
-                  },
+              : Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 760),
+                    child: ListView.builder(
+                      controller: _scrollController,
+                      padding: EdgeInsets.fromLTRB(0, topPadding + 12, 0, 12),
+                      itemCount:
+                          _messages.length + (_isAssistantTyping ? 1 : 0),
+                      itemBuilder: (context, index) {
+                        if (index == _messages.length) {
+                          return const _TypingBubble();
+                        }
+                        return ChatBubble(message: _messages[index]);
+                      },
+                    ),
+                  ),
                 ),
         ),
-        ChatComposer(
-          onSendText: _sendText,
-          onSendImage: _sendImage,
-          onSendAudio: _sendAudio,
+        Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 760),
+            child: ChatComposer(
+              onSendText: _sendText,
+              onSendImage: _sendImage,
+              onSendAudio: _sendAudio,
+            ),
+          ),
         ),
       ],
     );
@@ -210,9 +221,9 @@ class _EmptyState extends StatelessWidget {
             Text(
               'Converse com seu secretário financeiro',
               textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 8),
             Text(

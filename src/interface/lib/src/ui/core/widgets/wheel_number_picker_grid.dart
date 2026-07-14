@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'package:my_cash/src/ui/core/theme/app_theme.dart';
+
 /// Shared wheel-scroll number picker (used for the year and installments
 /// selectors) so every "pick a number" sheet in the app looks and behaves
 /// the same way.
@@ -103,7 +105,7 @@ class _WheelNumberPickerGridState extends State<WheelNumberPickerGrid> {
                 backgroundColor: colorScheme.primary,
                 foregroundColor: colorScheme.onPrimary,
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(AppRadii.sm),
                 ),
               ),
               child: Text(

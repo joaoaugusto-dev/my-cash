@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/theme/app_theme.dart';
 import '../../core/widgets/spring_curve.dart';
 
 class PeriodAndVisionRow extends StatelessWidget {
@@ -11,6 +12,8 @@ class PeriodAndVisionRow extends StatelessWidget {
     required this.onPrevious,
     required this.onNext,
     required this.onTapPeriod,
+    this.showTodayButton = false,
+    this.onTapToday,
   });
 
   final String label;
@@ -19,6 +22,11 @@ class PeriodAndVisionRow extends StatelessWidget {
   final VoidCallback onPrevious;
   final VoidCallback onNext;
   final VoidCallback onTapPeriod;
+
+  /// Shows a "Voltar para hoje" button once the user has strayed from the
+  /// current period — otherwise it's easy to get lost after a few taps.
+  final bool showTodayButton;
+  final VoidCallback? onTapToday;
 
   @override
   Widget build(BuildContext context) {
@@ -37,25 +45,99 @@ class PeriodAndVisionRow extends StatelessWidget {
           onChanged: onToggleVision,
         );
 
-        if (isNarrow) {
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              periodSelector,
-              const SizedBox(height: 12),
-              visionToggle,
-            ],
-          );
-        }
+        final row = isNarrow
+            ? Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  periodSelector,
+                  const SizedBox(height: 12),
+                  visionToggle,
+                ],
+              )
+            : Row(
+                children: [
+                  Expanded(child: periodSelector),
+                  const SizedBox(width: 14),
+                  SizedBox(width: 240, child: visionToggle),
+                ],
+              );
 
-        return Row(
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Expanded(child: periodSelector),
-            const SizedBox(width: 14),
-            SizedBox(width: 240, child: visionToggle),
+            row,
+            AnimatedSize(
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeOutCubic,
+              alignment: Alignment.topCenter,
+              child: showTodayButton
+                  ? Padding(
+                      padding: const EdgeInsets.only(top: 10),
+                      child: isNarrow
+                          ? _TodayButton(onTap: onTapToday, expand: true)
+                          : Align(
+                              alignment: Alignment.centerRight,
+                              child: _TodayButton(onTap: onTapToday),
+                            ),
+                    )
+                  : const SizedBox(width: double.infinity),
+            ),
           ],
         );
       },
+    );
+  }
+}
+
+class _TodayButton extends StatelessWidget {
+  const _TodayButton({required this.onTap, this.expand = false});
+
+  final VoidCallback? onTap;
+
+  /// Stretches to the full width of the row above (mobile), instead of
+  /// wrapping tight and floating to the right (wide layouts).
+  final bool expand;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(AppRadii.sm),
+        onTap: onTap,
+        child: Container(
+          width: expand ? double.infinity : null,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            color: colorScheme.primary,
+            borderRadius: BorderRadius.circular(AppRadii.sm),
+            boxShadow: [
+              BoxShadow(
+                color: colorScheme.primary.withValues(alpha: 0.32),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisSize: expand ? MainAxisSize.max : MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.replay_rounded, size: 15, color: Colors.white),
+              const SizedBox(width: 6),
+              Text(
+                'Voltar para o período atual',
+                style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -124,7 +206,7 @@ class _PeriodSelectorState extends State<_PeriodSelector>
           begin: Alignment.centerLeft,
           end: Alignment.centerRight,
         ),
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(AppRadii.lg),
         border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
         boxShadow: [
           BoxShadow(
@@ -141,7 +223,7 @@ class _PeriodSelectorState extends State<_PeriodSelector>
             child: InkWell(
               splashColor: Colors.white.withValues(alpha: 0.15),
               highlightColor: Colors.white.withValues(alpha: 0.08),
-              borderRadius: BorderRadius.horizontal(left: Radius.circular(22)),
+              borderRadius: BorderRadius.horizontal(left: Radius.circular(AppRadii.lg)),
               onTap: widget.onPrevious,
               child: SizedBox(
                 width: 52,
@@ -190,7 +272,7 @@ class _PeriodSelectorState extends State<_PeriodSelector>
             child: InkWell(
               splashColor: Colors.white.withValues(alpha: 0.15),
               highlightColor: Colors.white.withValues(alpha: 0.08),
-              borderRadius: BorderRadius.horizontal(right: Radius.circular(22)),
+              borderRadius: BorderRadius.horizontal(right: Radius.circular(AppRadii.lg)),
               onTap: widget.onNext,
               child: SizedBox(
                 width: 52,
@@ -299,7 +381,7 @@ class _VisionToggleState extends State<_VisionToggle>
         padding: const EdgeInsets.all(5),
         decoration: BoxDecoration(
           color: colorScheme.surface.withValues(alpha: 0.7),
-          borderRadius: BorderRadius.circular(22),
+          borderRadius: BorderRadius.circular(AppRadii.lg),
           border: Border.all(
             color: colorScheme.outline.withValues(alpha: 0.55),
           ),
@@ -331,7 +413,7 @@ class _VisionToggleState extends State<_VisionToggle>
                         begin: Alignment.centerLeft,
                         end: Alignment.centerRight,
                       ),
-                      borderRadius: BorderRadius.circular(17),
+                      borderRadius: BorderRadius.circular(AppRadii.md),
                       boxShadow: [
                         BoxShadow(
                           color: const Color(

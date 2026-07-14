@@ -10,6 +10,8 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:my_cash/src/config/app_env.dart';
+import 'package:my_cash/src/ui/core/theme/app_theme.dart';
+import 'package:my_cash/src/ui/core/widgets/finance_background.dart';
 import 'package:my_cash/src/utils/profile_helpers.dart';
 
 class AuthPage extends StatefulWidget {
@@ -484,7 +486,7 @@ class _AuthPageState extends State<AuthPage> {
       backgroundColor: Colors.transparent,
       body: Stack(
         children: [
-          const _AuthBackground(),
+          const FinanceBackground(),
           SafeArea(
             child: Center(
               child: SingleChildScrollView(
@@ -494,7 +496,7 @@ class _AuthPageState extends State<AuthPage> {
                   constraints: const BoxConstraints(maxWidth: 460),
                   child: _AuthAnimatedSection(
                     child: ClipRRect(
-                      borderRadius: BorderRadius.circular(32),
+                      borderRadius: BorderRadius.circular(AppRadii.xxl),
                       child: BackdropFilter(
                         filter: ui.ImageFilter.blur(sigmaX: 8, sigmaY: 8),
                         child: Container(
@@ -503,7 +505,7 @@ class _AuthPageState extends State<AuthPage> {
                             color: colorScheme.surface.withValues(
                               alpha: isDark ? 0.72 : 0.84,
                             ),
-                            borderRadius: BorderRadius.circular(32),
+                            borderRadius: BorderRadius.circular(AppRadii.xxl),
                             border: Border.all(
                               color: colorScheme.outline.withValues(
                                 alpha: 0.52,
@@ -1036,7 +1038,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
       backgroundColor: Colors.transparent,
       body: Stack(
         children: [
-          const _AuthBackground(),
+          const FinanceBackground(),
           SafeArea(
             child: Center(
               child: SingleChildScrollView(
@@ -1046,7 +1048,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
                   constraints: const BoxConstraints(maxWidth: 460),
                   child: _AuthAnimatedSection(
                     child: ClipRRect(
-                      borderRadius: BorderRadius.circular(32),
+                      borderRadius: BorderRadius.circular(AppRadii.xxl),
                       child: BackdropFilter(
                         filter: ui.ImageFilter.blur(sigmaX: 8, sigmaY: 8),
                         child: Container(
@@ -1055,7 +1057,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
                             color: colorScheme.surface.withValues(
                               alpha: isDark ? 0.72 : 0.84,
                             ),
-                            borderRadius: BorderRadius.circular(32),
+                            borderRadius: BorderRadius.circular(AppRadii.xxl),
                             border: Border.all(
                               color: colorScheme.outline.withValues(
                                 alpha: 0.52,
@@ -1675,7 +1677,7 @@ class _SignUpAvatarHero extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: colorScheme.primary.withValues(alpha: 0.07),
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(AppRadii.lg),
         border: Border.all(color: colorScheme.outline.withValues(alpha: 0.48)),
       ),
       child: LayoutBuilder(
@@ -1737,7 +1739,7 @@ class _OtpVerificationPanel extends StatelessWidget {
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
             color: colorScheme.primary.withValues(alpha: 0.08),
-            borderRadius: BorderRadius.circular(22),
+            borderRadius: BorderRadius.circular(AppRadii.lg),
             border: Border.all(
               color: colorScheme.primary.withValues(alpha: 0.18),
             ),
@@ -1750,7 +1752,7 @@ class _OtpVerificationPanel extends StatelessWidget {
                 height: 36,
                 decoration: BoxDecoration(
                   color: colorScheme.primary.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(AppRadii.sm),
                 ),
                 child: Icon(
                   Icons.mark_email_read_rounded,
@@ -1899,7 +1901,7 @@ class _OtpCodeInputState extends State<_OtpCodeInput> {
                                 color: colorScheme.surface.withValues(
                                   alpha: widget.enabled ? 0.74 : 0.38,
                                 ),
-                                borderRadius: BorderRadius.circular(18),
+                                borderRadius: BorderRadius.circular(AppRadii.md),
                                 border: Border.all(
                                   color: _focusNode.hasFocus
                                       ? colorScheme.primary.withValues(
@@ -2057,7 +2059,7 @@ class _CompactPasswordRules extends StatelessWidget {
             decoration: BoxDecoration(
               color: (isValid ? colorScheme.tertiary : colorScheme.onSurface)
                   .withValues(alpha: isValid ? 0.14 : 0.06),
-              borderRadius: BorderRadius.circular(999),
+              borderRadius: BorderRadius.circular(AppRadii.pill),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -2104,7 +2106,7 @@ class _PasswordRuleRow extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
       decoration: BoxDecoration(
         color: color.withValues(alpha: isValid ? 0.12 : 0.06),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppRadii.sm),
       ),
       child: Row(
         children: [
@@ -2148,96 +2150,20 @@ class _AuthBackButton extends StatelessWidget {
         button: true,
         label: 'Voltar',
         child: InkWell(
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(AppRadii.md),
           onTap: onPressed,
           child: Container(
             width: 44,
             height: 44,
             decoration: BoxDecoration(
               color: colorScheme.surface.withValues(alpha: 0.78),
-              borderRadius: BorderRadius.circular(18),
+              borderRadius: BorderRadius.circular(AppRadii.md),
               border: Border.all(
                 color: colorScheme.outline.withValues(alpha: 0.5),
               ),
             ),
             child: Icon(Icons.arrow_back_rounded, color: colorScheme.primary),
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _AuthBackground extends StatelessWidget {
-  const _AuthBackground();
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: isDark
-              ? const [Color(0xFF110A22), Color(0xFF1B1230), Color(0xFF0D0B16)]
-              : const [Color(0xFFFBFAFF), Color(0xFFF4F0FF), Color(0xFFFFFFFF)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-      ),
-      child: Stack(
-        children: [
-          Positioned(
-            top: -100,
-            left: -80,
-            child: _AuthGlow(
-              size: 280,
-              color: const Color(
-                0xFF7C3AED,
-              ).withValues(alpha: isDark ? 0.24 : 0.16),
-            ),
-          ),
-          Positioned(
-            top: 180,
-            right: -120,
-            child: _AuthGlow(
-              size: 300,
-              color: const Color(
-                0xFFB993FF,
-              ).withValues(alpha: isDark ? 0.16 : 0.22),
-            ),
-          ),
-          Positioned(
-            bottom: -140,
-            left: 20,
-            child: _AuthGlow(
-              size: 300,
-              color: const Color(
-                0xFF22C55E,
-              ).withValues(alpha: isDark ? 0.10 : 0.08),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _AuthGlow extends StatelessWidget {
-  const _AuthGlow({required this.size, required this.color});
-
-  final double size;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return IgnorePointer(
-      child: Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          gradient: RadialGradient(colors: [color, color.withValues(alpha: 0)]),
         ),
       ),
     );
@@ -2304,7 +2230,7 @@ class _AuthHeader extends StatelessWidget {
           height: 56,
           decoration: BoxDecoration(
             color: colorScheme.surface.withValues(alpha: 0.92),
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(AppRadii.md),
             border: Border.all(
               color: colorScheme.outline.withValues(alpha: 0.5),
             ),

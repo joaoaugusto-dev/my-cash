@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:my_cash/src/domain/models/financial_transaction.dart';
+import '../../core/theme/app_theme.dart';
 import '../../core/widgets/soft_panel.dart';
 
 class RecentTransactionsCard extends StatelessWidget {
@@ -149,94 +150,109 @@ class _CompactTransactionRow extends StatelessWidget {
           ),
         );
       },
-      child: GestureDetector(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 9),
-          child: Row(
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-                child: Icon(icon, size: 20, color: Colors.white),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      transaction.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 9),
+            child: Row(
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: color,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(icon, size: 20, color: Colors.white),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        transaction.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        transaction.category,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: colorScheme.onSurface.withValues(alpha: 0.56),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  formatDate(transaction.occurredAt),
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: colorScheme.onSurface.withValues(alpha: 0.58),
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 118),
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      '$sign${formatCurrency(transaction.amount)}',
                       style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        color: color,
                         fontWeight: FontWeight.w900,
+                        fontFeatures: tabularFigures,
                       ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      transaction.category,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: colorScheme.onSurface.withValues(alpha: 0.56),
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                formatDate(transaction.occurredAt),
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: colorScheme.onSurface.withValues(alpha: 0.58),
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(width: 12),
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 118),
-                child: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: Text(
-                    '$sign${formatCurrency(transaction.amount)}',
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      color: color,
-                      fontWeight: FontWeight.w900,
                     ),
                   ),
                 ),
-              ),
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                width: 36,
-                height: 36,
-                child: isDeleting
-                    ? Center(
-                        child: SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: colorScheme.primary,
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  width: 36,
+                  height: 36,
+                  child: isDeleting
+                      ? Center(
+                          child: SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: colorScheme.primary,
+                            ),
+                          ),
+                        )
+                      : IconButton(
+                          tooltip: 'Excluir lançamento',
+                          visualDensity: VisualDensity.compact,
+                          padding: EdgeInsets.zero,
+                          onPressed: onDelete,
+                          icon: Icon(
+                            Icons.delete_outline_rounded,
+                            size: 20,
+                            color: colorScheme.onSurface.withValues(
+                              alpha: 0.38,
+                            ),
                           ),
                         ),
-                      )
-                    : IconButton(
-                        tooltip: 'Excluir lançamento',
-                        visualDensity: VisualDensity.compact,
-                        padding: EdgeInsets.zero,
-                        onPressed: onDelete,
-                        icon: Icon(
-                          Icons.delete_outline_rounded,
-                          size: 20,
-                          color: colorScheme.onSurface.withValues(alpha: 0.38),
-                        ),
-                      ),
-              ),
-            ],
+                ),
+                const SizedBox(width: 4),
+                Icon(
+                  Icons.edit_outlined,
+                  size: 14,
+                  color: colorScheme.onSurface.withValues(alpha: 0.28),
+                ),
+              ],
+            ),
           ),
         ),
       ),

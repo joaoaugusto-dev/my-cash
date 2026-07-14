@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'package:my_cash/src/ui/core/theme/app_theme.dart';
+
 class SoftPanel extends StatelessWidget {
   const SoftPanel({
     super.key,
@@ -22,7 +24,7 @@ class SoftPanel extends StatelessWidget {
       decoration: BoxDecoration(
         color:
             tint ?? colorScheme.surface.withValues(alpha: isDark ? 0.72 : 0.82),
-        borderRadius: BorderRadius.circular(28),
+        borderRadius: BorderRadius.circular(AppRadii.xl),
         border: Border.all(color: colorScheme.outline.withValues(alpha: 0.48)),
         boxShadow: [
           BoxShadow(

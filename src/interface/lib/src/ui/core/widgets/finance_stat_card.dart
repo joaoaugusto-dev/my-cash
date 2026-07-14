@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'package:my_cash/src/ui/core/theme/app_theme.dart';
+
 class FinanceStatCard extends StatelessWidget {
   const FinanceStatCard({
     super.key,
@@ -25,7 +27,7 @@ class FinanceStatCard extends StatelessWidget {
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: colorScheme.surface.withValues(alpha: isDark ? 0.72 : 0.86),
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(AppRadii.lg),
         border: Border.all(color: colorScheme.outline.withValues(alpha: 0.50)),
         boxShadow: [
           BoxShadow(
@@ -75,6 +77,7 @@ class FinanceStatCard extends StatelessWidget {
                 color: color,
                 fontWeight: FontWeight.w900,
                 letterSpacing: -0.4,
+                fontFeatures: tabularFigures,
               ),
             ),
           ),

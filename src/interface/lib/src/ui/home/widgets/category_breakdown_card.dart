@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../../core/theme/app_theme.dart';
 import '../../core/widgets/soft_panel.dart';
 import '../category_summary.dart';
 
@@ -139,6 +140,7 @@ class _CategoryLegendRow extends StatelessWidget {
           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
             color: colorScheme.onSurface.withValues(alpha: 0.58),
             fontWeight: FontWeight.w700,
+            fontFeatures: tabularFigures,
           ),
         ),
         const SizedBox(width: 14),

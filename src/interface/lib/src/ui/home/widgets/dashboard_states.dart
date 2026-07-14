@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/theme/app_theme.dart';
 import '../../core/widgets/soft_panel.dart';
 
 class DashboardLoadingCard extends StatelessWidget {
@@ -43,7 +44,7 @@ class EmptyStateCard extends StatelessWidget {
         color: colorScheme.surface.withValues(
           alpha: Theme.of(context).brightness == Brightness.dark ? 0.72 : 0.82,
         ),
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(AppRadii.lg),
         border: Border.all(color: colorScheme.outline.withValues(alpha: 0.5)),
       ),
       child: Column(
