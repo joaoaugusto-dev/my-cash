@@ -1,6 +1,7 @@
 import { TransactionType } from './transaction-type.enum';
 import { Transaction } from './interfaces/transaction.interface';
 import {
+  addMonths,
   buildOccurrenceId,
   expandRecurrence,
   parseOccurrenceId,
@@ -60,6 +61,26 @@ describe('recurrence.util', () => {
   it('produces nothing before the anchor start date', () => {
     const window = resolvePeriodWindow('2025-12');
     expect(expandRecurrence(anchor(), window)).toHaveLength(0);
+  });
+
+  it('clamps day-31 anchors instead of overflowing into the next month', () => {
+    const window = resolvePeriodWindow('2026-02');
+    const occurrences = expandRecurrence(
+      anchor({ occurredAt: '2026-01-31T00:00:00.000Z' }),
+      window,
+    );
+
+    expect(occurrences).toHaveLength(1);
+    expect(occurrences[0].occurredAt).toBe('2026-02-28T00:00:00.000Z');
+  });
+
+  it('addMonths clamps to the last day of shorter target months', () => {
+    expect(addMonths(new Date('2026-01-31T00:00:00.000Z'), 1).toISOString()).toBe(
+      '2026-02-28T00:00:00.000Z',
+    );
+    expect(addMonths(new Date('2026-05-31T00:00:00.000Z'), 1).toISOString()).toBe(
+      '2026-06-30T00:00:00.000Z',
+    );
   });
 
   it('round-trips a virtual occurrence id', () => {

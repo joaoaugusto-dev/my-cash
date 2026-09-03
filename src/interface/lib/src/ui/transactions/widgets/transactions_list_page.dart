@@ -90,7 +90,7 @@ class _TransactionsListPageState extends State<TransactionsListPage> {
   ) {
     final map = <DateTime, List<FinancialTransaction>>{};
     for (final t in transactions) {
-      final date = DateTime.parse(t.occurredAt).toLocal();
+      final date = parseCalendarDate(t.occurredAt) ?? DateTime.parse(t.occurredAt);
       final day = DateTime(date.year, date.month, date.day);
       map.putIfAbsent(day, () => []).add(t);
     }

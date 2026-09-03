@@ -14,6 +14,12 @@ export function configureApp(app: INestApplication) {
     disable?: (setting: string) => void;
   };
   httpServer.disable?.('x-powered-by');
+  // Chat messages carry base64 photos and voice notes; the default 100kb JSON
+  // body limit would reject them. 5mb tracks the serverless request cap, and
+  // ChatService rejects anything above ~4mb of media with a clear message.
+  (
+    app as { useBodyParser?: (type: string, options: { limit: string }) => void }
+  ).useBodyParser?.('json', { limit: '5mb' });
   app.setGlobalPrefix('api');
   applySecurityHeaders(app);
   configureCors(app);

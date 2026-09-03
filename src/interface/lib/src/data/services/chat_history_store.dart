@@ -7,7 +7,10 @@ import 'package:my_cash/src/domain/models/chat_message.dart';
 /// Persists the chat conversation locally, capped at [maxMessages] — once
 /// the limit is hit, the oldest messages are dropped to make room.
 class ChatHistoryStore {
-  static const _storageKey = 'chat_history';
+  /// Bump the suffix when the assistant's abilities change enough that old
+  /// replies would mislead it — conversations from before it could read the
+  /// user's data kept telling it that it couldn't.
+  static const _storageKey = 'chat_history_v2';
   static const maxMessages = 50;
 
   Future<List<ChatMessage>> load() async {

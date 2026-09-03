@@ -474,9 +474,15 @@ class _HomeViewState extends State<_HomeView> {
                                   value: formatCurrency(
                                     dashboard.summary.balance,
                                   ),
-                                  subtitle:
-                                      '${dashboard.transactions.length} movimentações',
-                                  icon: Icons.account_balance_wallet_rounded,
+                                  subtitle: dashboard.summary.balance < 0
+                                      ? '${formatCurrency(dashboard.summary.balance.abs())} negativo'
+                                      : '${dashboard.transactions.length} movimentações',
+                                  subtitleIcon: dashboard.summary.balance < 0
+                                      ? Icons.warning_amber_rounded
+                                      : Icons.trending_up_rounded,
+                                  icon: dashboard.summary.balance < 0
+                                      ? Icons.error_outline_rounded
+                                      : Icons.account_balance_wallet_rounded,
                                   color: netColor,
                                 ),
                               ],
@@ -550,7 +556,16 @@ class _HomeViewState extends State<_HomeView> {
                 onCardsChanged: vm.loadCards,
                 spentByCardId: vm.spentByCardId,
               ),
-              ChatPage(apiService: vm.chatApiService),
+              ChatPage(
+                apiService: vm.chatApiService,
+                // The assistant writes through the same API the forms use, so
+                // a reload is all it takes for the dashboard and the list
+                // (which reads vm.cachedDashboard) to show what it changed.
+                onDataChanged: () {
+                  vm.refreshDashboard();
+                  vm.loadCardSpendTransactions();
+                },
+              ),
               SettingsPage(
                 session: vm.session,
                 themeController: vm.themeController,

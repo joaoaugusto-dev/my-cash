@@ -107,6 +107,12 @@ alter table public.transactions
   add column if not exists installments_total integer
     check (installments_total is null or installments_total between 2 and 36);
 
+-- Reminder toggle: notify the user on the due date. For a recurring anchor
+-- this is read once, then carried onto every expanded occurrence, so one
+-- flag on the anchor row covers the whole series.
+alter table public.transactions
+  add column if not exists notify_on_due_date boolean not null default false;
+
 grant select, insert, update, delete on public.transactions to service_role;
 grant select, insert, update, delete on public.profiles to service_role;
 grant select, insert, update, delete on public.cards to service_role;

@@ -13,6 +13,8 @@ class ChatMessage {
     this.text,
     this.mediaPath,
     this.audioDuration,
+    this.captionAudioPath,
+    this.captionAudioDuration,
     this.status = ChatMessageStatus.sent,
   });
 
@@ -25,11 +27,22 @@ class ChatMessage {
     status: ChatMessageStatus.sending,
   );
 
-  factory ChatMessage.userImage(String path) => ChatMessage(
+  /// [captionAudioPath]/[captionAudioDuration] let a photo carry a voice
+  /// note as its caption instead of (or in addition to) typed [text] — both
+  /// travel to the model as separate content parts of the same message.
+  factory ChatMessage.userImage(
+    String path, {
+    String? text,
+    String? captionAudioPath,
+    Duration? captionAudioDuration,
+  }) => ChatMessage(
     id: _newId(),
     sender: ChatSender.user,
     kind: ChatMessageKind.image,
     mediaPath: path,
+    text: text,
+    captionAudioPath: captionAudioPath,
+    captionAudioDuration: captionAudioDuration,
     createdAt: DateTime.now(),
     status: ChatMessageStatus.sending,
   );
@@ -59,6 +72,9 @@ class ChatMessage {
   final String? text;
   final String? mediaPath;
   final Duration? audioDuration;
+  /// Set only on an image message that also carries a voice-note caption.
+  final String? captionAudioPath;
+  final Duration? captionAudioDuration;
   final DateTime createdAt;
   final ChatMessageStatus status;
 
@@ -70,6 +86,8 @@ class ChatMessage {
         text: text ?? this.text,
         mediaPath: mediaPath,
         audioDuration: audioDuration,
+        captionAudioPath: captionAudioPath,
+        captionAudioDuration: captionAudioDuration,
         createdAt: createdAt,
         status: status ?? this.status,
       );
@@ -84,6 +102,10 @@ class ChatMessage {
       audioDuration: json['audioDurationMs'] == null
           ? null
           : Duration(milliseconds: json['audioDurationMs'] as int),
+      captionAudioPath: json['captionAudioPath'] as String?,
+      captionAudioDuration: json['captionAudioDurationMs'] == null
+          ? null
+          : Duration(milliseconds: json['captionAudioDurationMs'] as int),
       createdAt: DateTime.parse(json['createdAt'] as String),
       status: ChatMessageStatus.values.byName(json['status'] as String),
     );
@@ -98,6 +120,9 @@ class ChatMessage {
       if (mediaPath != null) 'mediaPath': mediaPath,
       if (audioDuration != null)
         'audioDurationMs': audioDuration!.inMilliseconds,
+      if (captionAudioPath != null) 'captionAudioPath': captionAudioPath,
+      if (captionAudioDuration != null)
+        'captionAudioDurationMs': captionAudioDuration!.inMilliseconds,
       'createdAt': createdAt.toIso8601String(),
       'status': status.name,
     };

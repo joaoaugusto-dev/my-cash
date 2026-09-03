@@ -109,12 +109,38 @@ class ChatBubble extends StatelessWidget {
           style: TextStyle(color: textColor, fontSize: 15.5, height: 1.3),
         );
       case ChatMessageKind.image:
-        return GestureDetector(
-          onTap: () => _openImagePreview(context),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(AppRadii.sm),
-            child: _image(message.mediaPath!, width: 220, height: 220),
-          ),
+        final caption = message.text;
+        final captionAudioPath = message.captionAudioPath;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            GestureDetector(
+              onTap: () => _openImagePreview(context),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(AppRadii.sm),
+                child: _image(message.mediaPath!, width: 220, height: 220),
+              ),
+            ),
+            if (caption != null && caption.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: Text(
+                  caption,
+                  style: TextStyle(color: textColor, fontSize: 15.5, height: 1.3),
+                ),
+              ),
+            ],
+            if (captionAudioPath != null) ...[
+              const SizedBox(height: 6),
+              _AudioBubbleContent(
+                path: captionAudioPath,
+                duration: message.captionAudioDuration ?? Duration.zero,
+                textColor: textColor,
+              ),
+            ],
+          ],
         );
       case ChatMessageKind.audio:
         return _AudioBubbleContent(

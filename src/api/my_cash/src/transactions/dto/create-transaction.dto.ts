@@ -19,4 +19,6 @@ export interface CreateTransactionDto {
   recurrenceUnit?: RecurrenceUnit | null;
   /** Total parcelas for an installment purchase; implies monthly recurrence. */
   installmentsTotal?: number;
+  /** Reminder toggle: notify the user on this transaction's due date. */
+  notifyOnDueDate?: boolean;
 }

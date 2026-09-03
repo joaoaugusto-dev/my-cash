@@ -62,6 +62,83 @@ void main() {
     );
   });
 
+  test('streamMessage retries on overload and succeeds once it clears',
+      () async {
+    var call = 0;
+    final client = MockClient.streaming((request, bodyStream) async {
+      call++;
+      if (call == 1) {
+        return http.StreamedResponse(
+          Stream.fromIterable([
+            utf8.encode(
+              jsonEncode({
+                'statusCode': 502,
+                'message': 'Gemini request failed (429) {"error":'
+                    '{"status":"RESOURCE_EXHAUSTED"}}',
+              }),
+            ),
+          ]),
+          502,
+        );
+      }
+      return http.StreamedResponse(
+        Stream.fromIterable([utf8.encode('Anotado!')]),
+        200,
+      );
+    });
+
+    final service = ChatApiService(
+      apiBaseUrl: 'https://api.example.com',
+      accessTokenProvider: () => 'token-123',
+      client: client,
+      retryDelay: Duration.zero,
+    );
+
+    final retries = <int>[];
+    final chunks = await service
+        .streamMessage(
+          [
+            {'role': 'user', 'content': 'oi'},
+          ],
+          onRetry: (attempt, max) => retries.add(attempt),
+        )
+        .toList();
+
+    expect(chunks.join(), 'Anotado!');
+    expect(retries, [1]);
+    expect(call, 2);
+  });
+
+  test('streamMessage gives up after maxRetries and reports high demand',
+      () async {
+    final client = MockClient.streaming((request, bodyStream) async {
+      return http.StreamedResponse(
+        Stream.fromIterable([utf8.encode('{"message":"429 overloaded"}')]),
+        502,
+      );
+    });
+
+    final service = ChatApiService(
+      apiBaseUrl: 'https://api.example.com',
+      accessTokenProvider: () => 'token-123',
+      client: client,
+      retryDelay: Duration.zero,
+    );
+
+    await expectLater(
+      service.streamMessage([
+        {'role': 'user', 'content': 'oi'},
+      ]).toList(),
+      throwsA(
+        isA<Exception>().having(
+          (e) => e.toString(),
+          'message',
+          contains('alta demanda'),
+        ),
+      ),
+    );
+  });
+
   test('streamMessage throws when the session is empty', () async {
     final service = ChatApiService(
       apiBaseUrl: 'https://api.example.com',

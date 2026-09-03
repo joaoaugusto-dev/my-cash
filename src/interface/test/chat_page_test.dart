@@ -29,7 +29,7 @@ void main() {
     );
 
     await tester.pumpWidget(
-      MaterialApp(home: Scaffold(body: ChatPage(apiService: apiService))),
+      MaterialApp(home: Scaffold(body: ChatPage(apiService: apiService, onDataChanged: () {}))),
     );
 
     await tester.enterText(
@@ -59,7 +59,7 @@ void main() {
     );
 
     await tester.pumpWidget(
-      MaterialApp(home: Scaffold(body: ChatPage(apiService: apiService))),
+      MaterialApp(home: Scaffold(body: ChatPage(apiService: apiService, onDataChanged: () {}))),
     );
     await tester.enterText(find.byType(TextField), 'Recebi 500 de freela');
     await tester.pump();
@@ -69,11 +69,50 @@ void main() {
     // Simulate the app being reopened: a brand new ChatPage/State.
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pumpWidget(
-      MaterialApp(home: Scaffold(body: ChatPage(apiService: apiService))),
+      MaterialApp(home: Scaffold(body: ChatPage(apiService: apiService, onDataChanged: () {}))),
     );
     await tester.pumpAndSettle();
 
     expect(find.text('Recebi 500 de freela'), findsOneWidget);
     expect(find.text('Anotado!'), findsOneWidget);
+  });
+
+  testWidgets('a reply that changed data refreshes the dashboard and hides the marker', (
+    tester,
+  ) async {
+    var refreshes = 0;
+    final apiService = ChatApiService(
+      apiBaseUrl: 'https://api.example.com',
+      accessTokenProvider: () => 'token-123',
+      client: MockClient.streaming((request, bodyStream) async {
+        return http.StreamedResponse(
+          // The marker is split across chunks, as it can be on the wire.
+          Stream.fromIterable([
+            utf8.encode('Registrado! [[mycash'),
+            utf8.encode(':refresh]]'),
+          ]),
+          200,
+        );
+      }),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ChatPage(
+            apiService: apiService,
+            onDataChanged: () => refreshes++,
+          ),
+        ),
+      ),
+    );
+    await tester.enterText(find.byType(TextField), 'gastei 50 no mercado');
+    await tester.pump();
+    await tester.tap(find.byIcon(Icons.send_rounded));
+    await tester.pumpAndSettle();
+
+    expect(refreshes, 1);
+    expect(find.text('Registrado!'), findsOneWidget);
+    expect(find.textContaining('mycash:refresh'), findsNothing);
   });
 }

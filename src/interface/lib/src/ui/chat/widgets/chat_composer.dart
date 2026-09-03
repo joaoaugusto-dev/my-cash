@@ -15,16 +15,28 @@ const double _lockDragThreshold = 80;
 /// Leftward drag distance (px) that cancels a held recording.
 const double _cancelDragThreshold = 90;
 
+/// 16kHz mono PCM ≈ 32KB/s, so this keeps a note under the ~2.9MB the chat
+/// accepts per attachment. Reaching it sends what was recorded so far.
+const Duration _maxRecording = Duration(seconds: 90);
+
 class ChatComposer extends StatefulWidget {
   const ChatComposer({
     super.key,
     required this.onSendText,
     required this.onSendImage,
+    required this.onSendImageWithAudio,
     required this.onSendAudio,
   });
 
   final ValueChanged<String> onSendText;
-  final ValueChanged<String> onSendImage;
+
+  /// [text] is the typed caption, if any — null/empty sends the photo alone.
+  final void Function(String path, {String? text}) onSendImage;
+
+  /// A photo sent with a recorded voice note as its caption instead of text.
+  final void Function(String imagePath, String audioPath, Duration duration)
+  onSendImageWithAudio;
+
   final void Function(String path, Duration duration) onSendAudio;
 
   @override
@@ -43,6 +55,10 @@ class _ChatComposerState extends State<ChatComposer> {
   double _dragDx = 0;
   Duration _elapsed = Duration.zero;
   Timer? _ticker;
+
+  /// A photo picked but not sent yet — staged so the user can type a caption
+  /// or record a voice note before it goes out, instead of sending on pick.
+  String? _stagedImagePath;
 
   @override
   void initState() {
@@ -77,8 +93,23 @@ class _ChatComposerState extends State<ChatComposer> {
   void _sendText() {
     final text = _textController.text.trim();
     if (text.isEmpty) return;
-    widget.onSendText(text);
+    final stagedImage = _stagedImagePath;
+    if (stagedImage != null) {
+      widget.onSendImage(stagedImage, text: text);
+      setState(() => _stagedImagePath = null);
+    } else {
+      widget.onSendText(text);
+    }
     _textController.clear();
+  }
+
+  /// Sends the staged photo alone — the caption row has no room for a
+  /// dedicated "send with no caption" button, so it lives on the preview.
+  void _sendStagedImage() {
+    final stagedImage = _stagedImagePath;
+    if (stagedImage == null) return;
+    widget.onSendImage(stagedImage);
+    setState(() => _stagedImagePath = null);
   }
 
   Future<void> _pickImage(ImageSource source) async {
@@ -88,7 +119,7 @@ class _ChatComposerState extends State<ChatComposer> {
       imageQuality: 80,
       maxWidth: 1600,
     );
-    if (file != null) widget.onSendImage(file.path);
+    if (file != null) setState(() => _stagedImagePath = file.path);
   }
 
   void _openAttachSheet() {
@@ -114,16 +145,22 @@ class _ChatComposerState extends State<ChatComposer> {
   }
 
   Future<String> _preparePath() async {
-    if (kIsWeb) return 'voice_message.m4a';
+    if (kIsWeb) return 'voice_message.wav';
     final dir = await getTemporaryDirectory();
-    return '${dir.path}/voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
+    return '${dir.path}/voice_${DateTime.now().millisecondsSinceEpoch}.wav';
   }
 
   Future<void> _startRecording() async {
     if (!await _recorder.hasPermission()) return;
     final path = await _preparePath();
     await _recorder.start(
-      const RecordConfig(encoder: AudioEncoder.aacLc),
+      // WAV, mono, 16kHz: the models read wav/mp3 inline, not m4a, and speech
+      // needs nothing better than 16kHz — it keeps the upload small.
+      const RecordConfig(
+        encoder: AudioEncoder.wav,
+        sampleRate: 16000,
+        numChannels: 1,
+      ),
       path: path,
     );
     setState(() {
@@ -135,6 +172,7 @@ class _ChatComposerState extends State<ChatComposer> {
     });
     _ticker = Timer.periodic(const Duration(milliseconds: 200), (_) {
       setState(() => _elapsed += const Duration(milliseconds: 200));
+      if (_elapsed >= _maxRecording) _finishRecording(send: true);
     });
   }
 
@@ -149,7 +187,13 @@ class _ChatComposerState extends State<ChatComposer> {
     final duration = _elapsed;
     final path = await _recorder.stop();
     if (send && path != null && duration.inMilliseconds > 400) {
-      widget.onSendAudio(path, duration);
+      final stagedImage = _stagedImagePath;
+      if (stagedImage != null) {
+        widget.onSendImageWithAudio(stagedImage, path, duration);
+        setState(() => _stagedImagePath = null);
+      } else {
+        widget.onSendAudio(path, duration);
+      }
     } else if (!kIsWeb && path != null) {
       unawaited(File(path).delete().catchError((_) => File(path)));
     }
@@ -198,7 +242,22 @@ class _ChatComposerState extends State<ChatComposer> {
         // kills drag-to-lock/cancel.
         child: Stack(
           children: [
-            Offstage(offstage: _isRecording, child: _textRow(colorScheme)),
+            Offstage(
+              offstage: _isRecording,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (_stagedImagePath != null)
+                    _ImagePreviewChip(
+                      path: _stagedImagePath!,
+                      onRemove: () => setState(() => _stagedImagePath = null),
+                      onSend: _sendStagedImage,
+                    ),
+                  _textRow(colorScheme),
+                ],
+              ),
+            ),
             if (_isRecording) _recordingRow(colorScheme),
           ],
         ),
@@ -224,9 +283,11 @@ class _ChatComposerState extends State<ChatComposer> {
                 minLines: 1,
                 maxLines: 5,
                 textCapitalization: TextCapitalization.sentences,
-                decoration: const InputDecoration(
-                  hintText: 'Mensagem',
-                  contentPadding: EdgeInsets.symmetric(
+                decoration: InputDecoration(
+                  hintText: _stagedImagePath != null
+                      ? 'Legenda (opcional)'
+                      : 'Mensagem',
+                  contentPadding: const EdgeInsets.symmetric(
                     horizontal: 16,
                     vertical: 10,
                   ),
@@ -322,6 +383,79 @@ class _ChatComposerState extends State<ChatComposer> {
     final minutes = d.inMinutes.remainder(60).toString().padLeft(2, '0');
     final seconds = d.inSeconds.remainder(60).toString().padLeft(2, '0');
     return '$minutes:$seconds';
+  }
+}
+
+/// Shown above the text field once a photo is picked but not sent yet, so
+/// the user can type a caption, record a voice one, or send it as-is.
+class _ImagePreviewChip extends StatelessWidget {
+  const _ImagePreviewChip({
+    required this.path,
+    required this.onRemove,
+    required this.onSend,
+  });
+
+  final String path;
+  final VoidCallback onRemove;
+  final VoidCallback onSend;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 4, 8, 8),
+      child: Row(
+        children: [
+          Stack(
+            clipBehavior: Clip.none,
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: kIsWeb
+                    ? Image.network(path, width: 56, height: 56, fit: BoxFit.cover)
+                    : Image.file(
+                        File(path),
+                        width: 56,
+                        height: 56,
+                        fit: BoxFit.cover,
+                      ),
+              ),
+              Positioned(
+                top: -6,
+                right: -6,
+                child: GestureDetector(
+                  onTap: onRemove,
+                  child: CircleAvatar(
+                    radius: 10,
+                    backgroundColor: colorScheme.error,
+                    child: const Icon(
+                      Icons.close_rounded,
+                      size: 14,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Adicione uma legenda ou envie assim mesmo.',
+              style: TextStyle(
+                fontSize: 12.5,
+                color: colorScheme.onSurface.withValues(alpha: 0.6),
+              ),
+            ),
+          ),
+          IconButton(
+            icon: Icon(Icons.send_rounded, color: colorScheme.primary),
+            tooltip: 'Enviar foto sem legenda',
+            onPressed: onSend,
+          ),
+        ],
+      ),
+    );
   }
 }
 

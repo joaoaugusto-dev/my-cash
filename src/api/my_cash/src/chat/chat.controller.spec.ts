@@ -4,6 +4,12 @@ import type { Response } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { ChatController } from './chat.controller';
 import { ChatService } from './chat.service';
+import { ChatTools } from './chat.tools';
+
+/** Stands in for the JWT-populated request the guard would provide. */
+const request = {
+  user: { userId: 'user-1', role: 'authenticated', accessToken: 'token' },
+} as never;
 
 function makeRes() {
   const chunks: string[] = [];
@@ -21,7 +27,7 @@ function makeRes() {
 
 function sseResponse(content: string, status = 200) {
   return new Response(
-    `data: ${JSON.stringify({ choices: [{ delta: { content } }] })}\n\ndata: [DONE]\n\n`,
+    `data: ${JSON.stringify({ candidates: [{ content: { parts: [{ text: content }] } }] })}\n\n`,
     { status },
   );
 }
@@ -37,13 +43,12 @@ describe('ChatController', () => {
       controllers: [ChatController],
       providers: [
         ChatService,
+        { provide: ChatTools, useValue: { run: jest.fn() } },
         {
           provide: ConfigService,
           useValue: {
             get: (key: string) =>
-              ({ OPENROUTER_APIKEY: 'test-key', OPENROUTER_MODEL: 'test-model' })[
-                key
-              ],
+              ({ GEMINI_APIKEY: 'test-key', GEMINI_MODEL: 'test-model' })[key],
           },
         },
       ],
@@ -59,27 +64,32 @@ describe('ChatController', () => {
     fetchSpy.mockRestore();
   });
 
-  it('streams the OpenRouter reply through as plain text and forwards the auth header', async () => {
+  it('streams the Gemini reply through as plain text', async () => {
     const { res, chunks } = makeRes();
 
     await controller.create(
+      request,
       { messages: [{ role: 'user', content: 'Comprei um lanche por 30 reais' }] },
       res,
     );
 
     expect(chunks.join('')).toBe('Anotado!');
     expect(fetchSpy).toHaveBeenCalledWith(
-      'https://openrouter.ai/api/v1/chat/completions',
+      expect.stringContaining(
+        'https://generativelanguage.googleapis.com/v1beta/models/test-model:streamGenerateContent',
+      ),
       expect.objectContaining({
-        headers: expect.objectContaining({ Authorization: 'Bearer test-key' }),
+        headers: expect.objectContaining({ 'Content-Type': 'application/json' }),
       }),
     );
   });
 
-  it('rejects an empty message list without calling OpenRouter', async () => {
+  it('rejects an empty message list without calling Gemini', async () => {
     const { res } = makeRes();
 
-    await expect(controller.create({ messages: [] }, res)).rejects.toThrow();
+    await expect(
+      controller.create(request, { messages: [] }, res),
+    ).rejects.toThrow();
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 });

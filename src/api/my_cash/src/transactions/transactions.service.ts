@@ -161,6 +161,7 @@ export class TransactionsService {
       cardId: dto.cardId,
       createdAt: now,
       updatedAt: now,
+      notifyOnDueDate: dto.notifyOnDueDate ?? false,
     };
 
     if (dto.installmentsTotal) {
@@ -248,6 +249,7 @@ export class TransactionsService {
       notes: dto.notes ?? anchor.notes,
       source: dto.source ?? anchor.source,
       cardId: dto.cardId ?? anchor.cardId,
+      notifyOnDueDate: dto.notifyOnDueDate ?? anchor.notifyOnDueDate,
       ...(editScope === 'forward'
         ? {
             recurrenceFrequency: anchor.recurrenceFrequency,
@@ -329,6 +331,10 @@ export class TransactionsService {
     if (dto.cardId !== undefined) {
       await this.assertCardOwnership(authContext, userId, dto.cardId);
       nextTransaction.cardId = dto.cardId;
+    }
+
+    if (dto.notifyOnDueDate !== undefined) {
+      nextTransaction.notifyOnDueDate = dto.notifyOnDueDate;
     }
 
     if (dto.recurrenceFrequency !== undefined) {

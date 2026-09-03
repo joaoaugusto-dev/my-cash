@@ -34,6 +34,8 @@ export interface Transaction {
    * occurrences at read time.
    */
   installmentsTotal?: number;
+  /** Reminder toggle: notify the user on this transaction's due date. */
+  notifyOnDueDate?: boolean;
 }
 
 export interface TransactionSummary {

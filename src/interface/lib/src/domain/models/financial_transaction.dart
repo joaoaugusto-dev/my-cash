@@ -19,6 +19,7 @@ class FinancialTransaction {
     this.recurrenceInterval,
     this.recurrenceUnit,
     this.installmentsTotal,
+    this.notifyOnDueDate = false,
   });
 
   final String id;
@@ -45,6 +46,9 @@ class FinancialTransaction {
   /// every occurrence expanded from it.
   final int? installmentsTotal;
 
+  /// Reminder toggle: notify the user on this transaction's due date.
+  final bool notifyOnDueDate;
+
   bool get isRecurring => seriesId != null || recurrenceFrequency != null;
 
   factory FinancialTransaction.fromJson(Map<String, dynamic> json) {
@@ -66,6 +70,7 @@ class FinancialTransaction {
       recurrenceInterval: (json['recurrenceInterval'] as num?)?.toInt(),
       recurrenceUnit: json['recurrenceUnit'] as String?,
       installmentsTotal: (json['installmentsTotal'] as num?)?.toInt(),
+      notifyOnDueDate: json['notifyOnDueDate'] as bool? ?? false,
     );
   }
 
@@ -85,6 +90,7 @@ class FinancialTransaction {
       'recurrenceFrequency': recurrenceFrequency,
       'recurrenceInterval': recurrenceInterval,
       'recurrenceUnit': recurrenceUnit,
+      'notifyOnDueDate': notifyOnDueDate,
     };
   }
 

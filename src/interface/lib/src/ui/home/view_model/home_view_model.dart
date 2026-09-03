@@ -7,6 +7,7 @@ import 'package:my_cash/src/data/services/session_access_token_provider.dart';
 import 'package:my_cash/src/config/app_env.dart';
 import 'package:my_cash/src/data/services/cards_api_service.dart';
 import 'package:my_cash/src/data/services/chat_api_service.dart';
+import 'package:my_cash/src/data/services/notification_service.dart';
 import 'package:my_cash/src/domain/models/credit_card.dart';
 import 'package:my_cash/src/domain/models/financial_transaction.dart';
 import 'package:my_cash/src/data/services/transactions_api_service.dart';
@@ -117,6 +118,7 @@ class HomeViewModel extends ChangeNotifier {
     return future.then((data) {
       cachedDashboard = data;
       _notify();
+      NotificationService.instance.syncWithTransactions(data.transactions);
       return data;
     });
   }

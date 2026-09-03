@@ -26,6 +26,7 @@ interface TransactionRow {
   recurrence_until: string | null;
   recurrence_exceptions: string[] | null;
   installments_total: number | null;
+  notify_on_due_date: boolean;
 }
 
 export class SupabaseTransactionsRepository implements TransactionsRepository {
@@ -203,6 +204,7 @@ export class SupabaseTransactionsRepository implements TransactionsRepository {
       recurrence_until: transaction.recurrenceUntil ?? null,
       recurrence_exceptions: transaction.recurrenceExceptions ?? [],
       installments_total: transaction.installmentsTotal ?? null,
+      notify_on_due_date: transaction.notifyOnDueDate ?? false,
     };
   }
 
@@ -229,6 +231,7 @@ export class SupabaseTransactionsRepository implements TransactionsRepository {
       recurrenceUntil: row.recurrence_until ?? undefined,
       recurrenceExceptions: row.recurrence_exceptions ?? undefined,
       installmentsTotal: row.installments_total ?? undefined,
+      notifyOnDueDate: row.notify_on_due_date,
     };
   }
 

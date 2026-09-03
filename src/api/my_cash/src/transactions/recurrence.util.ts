@@ -42,9 +42,16 @@ export function resolvePeriodWindow(month?: string, year?: string): PeriodWindow
   return { start, end };
 }
 
+/** Adds months, clamping the day so it never overflows into a later month (e.g. Jan 31 + 1 -> Feb 28, not Mar 3). */
 export function addMonths(date: Date, months: number): Date {
   const next = new Date(date);
+  const day = next.getUTCDate();
+  next.setUTCDate(1);
   next.setUTCMonth(next.getUTCMonth() + months);
+  const daysInTarget = new Date(
+    Date.UTC(next.getUTCFullYear(), next.getUTCMonth() + 1, 0),
+  ).getUTCDate();
+  next.setUTCDate(Math.min(day, daysInTarget));
   return next;
 }
 
@@ -82,13 +89,12 @@ function addStep(date: Date, anchor: Transaction): Date {
       } else if (anchor.recurrenceUnit === 'days') {
         next.setUTCDate(next.getUTCDate() + interval);
       } else {
-        next.setUTCMonth(next.getUTCMonth() + interval);
+        return addMonths(next, interval);
       }
       break;
     case 'monthly':
     default:
-      next.setUTCMonth(next.getUTCMonth() + interval);
-      break;
+      return addMonths(next, interval);
   }
 
   return next;

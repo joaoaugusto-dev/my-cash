@@ -6,7 +6,7 @@ String formatCurrency(double value) {
 }
 
 String formatDate(String isoDate) {
-  final date = DateTime.tryParse(isoDate)?.toLocal();
+  final date = parseCalendarDate(isoDate);
   if (date == null) {
     return isoDate;
   }
@@ -14,6 +14,37 @@ String formatDate(String isoDate) {
   final day = date.day.toString().padLeft(2, '0');
   final month = date.month.toString().padLeft(2, '0');
   return '$day/$month';
+}
+
+/// Reads the calendar day an `occurredAt`-style ISO string names, ignoring
+/// any time-of-day or timezone offset. These fields mean "this day
+/// happened" rather than a precise instant (the backend stores them as UTC
+/// midnight) — `DateTime.parse(iso).toLocal()` would shift that midnight
+/// into the previous day for any timezone behind UTC, including Brazil's.
+DateTime? parseCalendarDate(String isoDate) {
+  final datePart = isoDate.split('T').first.split(' ').first;
+  final parts = datePart.split('-');
+  if (parts.length != 3) {
+    return DateTime.tryParse(isoDate);
+  }
+  final year = int.tryParse(parts[0]);
+  final month = int.tryParse(parts[1]);
+  final day = int.tryParse(parts[2]);
+  if (year == null || month == null || day == null) {
+    return DateTime.tryParse(isoDate);
+  }
+  return DateTime(year, month, day);
+}
+
+/// `DateTime` → the `YYYY-MM-DD` calendar-date string the backend expects for
+/// `occurredAt`. Deliberately not an instant (no `.toUtc()`) — a date picker
+/// selection is a calendar day, and converting it to an instant can shift it
+/// across the day boundary depending on the device's timezone.
+String formatCalendarDate(DateTime date) {
+  final year = date.year.toString().padLeft(4, '0');
+  final month = date.month.toString().padLeft(2, '0');
+  final day = date.day.toString().padLeft(2, '0');
+  return '$year-$month-$day';
 }
 
 const _monthNames = [

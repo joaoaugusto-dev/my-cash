@@ -4,12 +4,14 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'src/app.dart';
 import 'package:my_cash/src/utils/oauth_url_sanitizer.dart';
 import 'package:my_cash/src/config/app_env.dart';
+import 'package:my_cash/src/data/services/notification_service.dart';
 import 'package:my_cash/src/ui/core/theme/app_theme_controller.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final themeController = await AppThemeController.create();
   final bootstrapError = await _bootstrapServices();
+  await NotificationService.instance.init();
   runApp(
     MyApp(themeController: themeController, bootstrapError: bootstrapError),
   );

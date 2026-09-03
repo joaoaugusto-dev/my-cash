@@ -10,6 +10,7 @@ class FinanceStatCard extends StatelessWidget {
     required this.icon,
     required this.color,
     this.subtitle,
+    this.subtitleIcon = Icons.trending_up_rounded,
   });
 
   final String title;
@@ -17,6 +18,7 @@ class FinanceStatCard extends StatelessWidget {
   final String? subtitle;
   final IconData icon;
   final Color color;
+  final IconData subtitleIcon;
 
   @override
   Widget build(BuildContext context) {
@@ -85,7 +87,7 @@ class FinanceStatCard extends StatelessWidget {
             const SizedBox(height: 10),
             Row(
               children: [
-                Icon(Icons.trending_up_rounded, size: 16, color: color),
+                Icon(subtitleIcon, size: 16, color: color),
                 const SizedBox(width: 5),
                 Expanded(
                   child: Text(
