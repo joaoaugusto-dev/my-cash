@@ -1,14 +1,16 @@
 import 'dart:typed_data';
+import 'dart:ui';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-
 import 'package:my_cash/src/ui/core/theme/app_theme.dart';
 import 'package:my_cash/src/ui/core/theme/app_theme_controller.dart';
 import 'package:my_cash/src/utils/profile_helpers.dart';
+import 'package:package_info_plus/package_info_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({
@@ -733,10 +735,255 @@ class _SettingsPageState extends State<SettingsPage> {
                     ),
                   ),
                 ),
+                const SizedBox(height: 16),
+                _SettingsAnimatedSection(
+                  order: 3,
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 18,
+                          vertical: 16,
+                        ),
+                        backgroundColor: colorScheme.surface.withValues(
+                          alpha: isDark ? 0.7 : 0.84,
+                        ),
+                        foregroundColor: colorScheme.primary,
+                        side: BorderSide(
+                          color: colorScheme.outline.withValues(alpha: 0.5),
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(AppRadii.lg),
+                        ),
+                      ),
+                      onPressed: () => showAboutAppDialog(context),
+                      icon: const Icon(Icons.info_outline_rounded),
+                      label: const Text('Sobre o app'),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                const _SettingsCredit(),
               ],
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+Future<void> showAboutAppDialog(BuildContext context) {
+  return showGeneralDialog(
+    context: context,
+    barrierDismissible: true,
+    barrierLabel: 'Sobre o app',
+    barrierColor: Colors.black.withValues(alpha: 0.35),
+    transitionDuration: const Duration(milliseconds: 220),
+    pageBuilder: (context, animation, secondaryAnimation) {
+      return const _AboutAppDialog();
+    },
+    transitionBuilder: (context, animation, secondaryAnimation, child) {
+      final curved = CurvedAnimation(
+        parent: animation,
+        curve: Curves.easeOutCubic,
+      );
+      return BackdropFilter(
+        filter: ImageFilter.blur(
+          sigmaX: 18 * curved.value,
+          sigmaY: 18 * curved.value,
+        ),
+        child: FadeTransition(
+          opacity: curved,
+          child: ScaleTransition(
+            scale: Tween<double>(begin: 0.92, end: 1).animate(curved),
+            child: child,
+          ),
+        ),
+      );
+    },
+  );
+}
+
+class _AboutAppDialog extends StatelessWidget {
+  const _AboutAppDialog();
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 28),
+        child: Material(
+          color: Colors.transparent,
+          child: Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: colorScheme.surface.withValues(
+                alpha: isDark ? 0.92 : 0.96,
+              ),
+              borderRadius: BorderRadius.circular(AppRadii.xl),
+              border: Border.all(
+                color: colorScheme.outline.withValues(alpha: 0.5),
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: isDark ? 0.4 : 0.15),
+                  blurRadius: 32,
+                  offset: const Offset(0, 18),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Sobre o app',
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () => Navigator.of(context).maybePop(),
+                      icon: const Icon(Icons.close_rounded),
+                      color: colorScheme.onSurface.withValues(alpha: 0.6),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                FutureBuilder<PackageInfo>(
+                  future: PackageInfo.fromPlatform(),
+                  builder: (context, snapshot) {
+                    final version = snapshot.hasData
+                        ? 'Versão ${snapshot.data!.version} (${snapshot.data!.buildNumber})'
+                        : 'Versão...';
+
+                    return Text(
+                      version,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: colorScheme.onSurface.withValues(alpha: 0.7),
+                        fontWeight: FontWeight.w700,
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  'MyCash ajuda você a organizar suas finanças de um jeito simples, rápido e visual.',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: colorScheme.onSurface.withValues(alpha: 0.68),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  'Obrigado por usar e confiar no meu app! Minha maior satisfação é ver que as minhas soluções ajudam na vida de pessoas como você! 💜',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: colorScheme.onSurface.withValues(alpha: 0.68),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  'Dúvidas, sugestões ou algum problema? Será um prazer te atender!:',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: colorScheme.onSurface.withValues(alpha: 0.55),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Center(
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(AppRadii.md),
+                    onTap: () => launchUrl(
+                      Uri(scheme: 'mailto', path: 'contato@joaoaugusto.dev'),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 6),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.mail_outline_rounded,
+                            size: 16,
+                            color: colorScheme.primary,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            'contato@joaoaugusto.dev',
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(
+                                  color: colorScheme.primary,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SettingsCredit extends StatelessWidget {
+  const _SettingsCredit();
+
+  static final Uri _portfolioUri = Uri.parse('https://joaoaugusto.dev');
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Center(
+      child: InkWell(
+        borderRadius: BorderRadius.circular(AppRadii.md),
+        onTap: () =>
+            launchUrl(_portfolioUri, mode: LaunchMode.externalApplication),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+          child: Text.rich(
+            TextSpan(
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: colorScheme.onSurface.withValues(alpha: 0.5),
+                fontWeight: FontWeight.w600,
+              ),
+              children: [
+                const TextSpan(text: 'Criado com carinho por: '),
+                TextSpan(
+                  text: 'joaoaugusto.dev ',
+                  style: TextStyle(
+                    color: colorScheme.primary,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const WidgetSpan(
+                  alignment: PlaceholderAlignment.middle,
+                  child: Icon(
+                    Icons.favorite_rounded,
+                    size: 14,
+                    color: Color(0xFF8B2CEB),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
