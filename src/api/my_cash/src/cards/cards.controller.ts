@@ -15,9 +15,11 @@ import {
   JwtAuthGuard,
   type AuthenticatedRequest,
 } from '../auth/jwt-auth.guard';
+import { RateLimitGuard } from '../common/rate-limit.guard';
 import { CardsService } from './cards.service';
 
-@UseGuards(JwtAuthGuard)
+// Cards change rarely; this only catches a runaway loop or scripted abuse.
+@UseGuards(JwtAuthGuard, new RateLimitGuard({ limit: 120, windowMs: 60_000 }))
 @Controller('cards')
 export class CardsController {
   constructor(private readonly cardsService: CardsService) {}

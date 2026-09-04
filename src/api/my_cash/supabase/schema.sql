@@ -186,6 +186,29 @@ create trigger on_auth_user_updated
 after update of email, raw_user_meta_data on auth.users
 for each row execute function public.handle_auth_user_upsert();
 
+-- profiles/transactions/cards clean up via `on delete cascade` on user_id,
+-- but the avatar in storage has no such FK — without this it would outlive
+-- the account it belonged to as an orphaned file.
+create or replace function public.handle_auth_user_deleted()
+returns trigger
+language plpgsql
+security definer
+set search_path = pg_catalog, public
+as $$
+begin
+  delete from storage.objects
+  where bucket_id = 'avatars'
+    and name = old.id::text || '/avatar.jpg';
+
+  return old;
+end;
+$$;
+
+drop trigger if exists on_auth_user_deleted on auth.users;
+create trigger on_auth_user_deleted
+after delete on auth.users
+for each row execute function public.handle_auth_user_deleted();
+
 create or replace function public.handle_user_profile_update()
 returns trigger
 language plpgsql
@@ -216,7 +239,12 @@ begin
     from pg_proc p
     join pg_namespace n on n.oid = p.pronamespace
     where n.nspname = 'public'
-      and p.proname in ('handle_auth_user_upsert', 'handle_new_user', 'rls_auto_enable')
+      and p.proname in (
+        'handle_auth_user_upsert',
+        'handle_auth_user_deleted',
+        'handle_new_user',
+        'rls_auto_enable'
+      )
   loop
     execute format(
       'revoke execute on function %s from public, anon, authenticated',
@@ -227,6 +255,7 @@ end;
 $$;
 
 grant execute on function public.handle_auth_user_upsert() to service_role;
+grant execute on function public.handle_auth_user_deleted() to service_role;
 
 drop policy if exists "Profiles are readable by owner" on public.profiles;
 create policy "Profiles are readable by owner"
