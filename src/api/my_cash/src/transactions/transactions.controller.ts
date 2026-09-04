@@ -17,9 +17,12 @@ import {
   JwtAuthGuard,
   type AuthenticatedRequest,
 } from '../auth/jwt-auth.guard';
+import { RateLimitGuard } from '../common/rate-limit.guard';
 import { TransactionsService } from './transactions.service';
 
-@UseGuards(JwtAuthGuard)
+// Generous: a dashboard load fires summary + list concurrently, and users
+// flip between months/years quickly — this only catches a runaway loop.
+@UseGuards(JwtAuthGuard, new RateLimitGuard({ limit: 180, windowMs: 60_000 }))
 @Controller('transactions')
 export class TransactionsController {
   constructor(private readonly transactionsService: TransactionsService) {}

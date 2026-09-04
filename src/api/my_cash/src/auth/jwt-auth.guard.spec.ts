@@ -86,6 +86,35 @@ describe('JwtAuthGuard', () => {
     );
   });
 
+  it('caps how often an unrecognized kid can force a JWKS re-fetch', async () => {
+    request.headers.authorization = `Bearer ${token({ subject: 'user-1' })}`;
+    const badKidToken = sign(
+      { email: 'user@example.com', role: 'authenticated' },
+      privateKey,
+      {
+        algorithm: 'RS256',
+        keyid: 'unknown-kid',
+        audience,
+        issuer,
+        subject: 'user-1',
+        expiresIn: 60,
+      },
+    );
+
+    for (let i = 0; i < 5; i++) {
+      request.headers.authorization = `Bearer ${badKidToken}`;
+      await expect(guard.canActivate(context())).rejects.toThrow(
+        UnauthorizedException,
+      );
+    }
+
+    // One fetch to warm the cache, plus one forced re-fetch on the first
+    // miss — never one per request.
+    expect((global.fetch as jest.Mock).mock.calls.length).toBeLessThanOrEqual(
+      2,
+    );
+  });
+
   function token(
     options: {
       audience?: string;

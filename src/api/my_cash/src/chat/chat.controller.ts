@@ -5,12 +5,13 @@ import {
   JwtAuthGuard,
   type AuthenticatedRequest,
 } from '../auth/jwt-auth.guard';
+import { RateLimitGuard } from '../common/rate-limit.guard';
 import { ChatService } from './chat.service';
 
-// ponytail: sem rate limit — o endpoint é fechado por JWT e cada usuário só
-// alcança os próprios dados. Se o custo do Gemini virar problema, throttle
-// por userId (@nestjs/throttler com storage externo, já que roda serverless).
-@UseGuards(JwtAuthGuard)
+// Tighter limit than the CRUD endpoints — each message can trigger several
+// Gemini calls (tool rounds), so this is the one that protects API cost.
+// 20/min is well above a real conversation's pace.
+@UseGuards(JwtAuthGuard, new RateLimitGuard({ limit: 20, windowMs: 60_000 }))
 @Controller('chat')
 export class ChatController {
   constructor(private readonly chatService: ChatService) {}

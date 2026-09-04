@@ -23,6 +23,14 @@ const expectedAudience = 'authenticated';
 const expectedRole = 'authenticated';
 const defaultJwksCacheMs = 5 * 60 * 1000;
 const maxJwksCacheMs = 10 * 60 * 1000;
+// A token with a kid that isn't in the cached JWKS busts the cache and
+// re-fetches once, to pick up a real Supabase key rotation. Without a floor
+// on how often that's allowed, anyone sending a fresh random kid on every
+// request turns each one into a guaranteed outbound fetch, with no rate
+// limit in front of it (RateLimitGuard runs after this one and never sees
+// a request this guard already rejected) — a free way to hammer Supabase's
+// JWKS endpoint through this API.
+const minForcedRefreshIntervalMs = 30 * 1000;
 
 interface CachedJwks {
   keys: Array<JsonWebKey & { kid?: string; alg?: string }>;
@@ -32,6 +40,7 @@ interface CachedJwks {
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
   private jwksCache?: CachedJwks;
+  private lastForcedRefreshAt = 0;
 
   constructor(private readonly configService: ConfigService) {}
 
@@ -111,10 +120,14 @@ export class JwtAuthGuard implements CanActivate {
     );
 
     if (!jwk) {
-      this.jwksCache = undefined;
-      jwk = (await this.loadJwks(supabaseUrl)).find(
-        (key) => key.kid === kid && (!key.alg || key.alg === alg),
-      );
+      const now = Date.now();
+      if (now - this.lastForcedRefreshAt >= minForcedRefreshIntervalMs) {
+        this.lastForcedRefreshAt = now;
+        this.jwksCache = undefined;
+        jwk = (await this.loadJwks(supabaseUrl)).find(
+          (key) => key.kid === kid && (!key.alg || key.alg === alg),
+        );
+      }
     }
 
     if (!jwk) {
