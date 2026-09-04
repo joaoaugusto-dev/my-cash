@@ -21,6 +21,7 @@ import '../view_model/home_view_model.dart';
 import 'ai_insight_card.dart';
 import 'category_breakdown_card.dart';
 import 'dashboard_states.dart';
+import 'home_splash_overlay.dart';
 import 'month_picker_sheet.dart';
 import 'period_vision_row.dart';
 import 'recent_transactions_card.dart';
@@ -60,11 +61,17 @@ class _HomeView extends StatefulWidget {
 class _HomeViewState extends State<_HomeView> {
   int _selectedNavIndex = 0;
   late final PageController _pageController;
+  late final Future<void> _initialLoad;
 
   @override
   void initState() {
     super.initState();
     _pageController = PageController(initialPage: _selectedNavIndex);
+    final vm = context.read<HomeViewModel>();
+    _initialLoad = Future.wait([
+      vm.dashboardFuture ?? Future.value(),
+      vm.cardsFuture ?? Future.value(),
+    ]);
   }
 
   @override
@@ -379,19 +386,10 @@ class _HomeViewState extends State<_HomeView> {
                         );
                       }
 
+                      // While loading, the full-screen HomeSplashOverlay
+                      // covers this — nothing meaningful to paint yet.
                       if (dashboard == null) {
-                        return ListView(
-                          physics: const AlwaysScrollableScrollPhysics(
-                            parent: BouncingScrollPhysics(),
-                          ),
-                          padding: EdgeInsets.fromLTRB(
-                            24,
-                            topPadding + 92,
-                            24,
-                            bottomPadding + 150,
-                          ),
-                          children: const [DashboardLoadingCard()],
-                        );
+                        return const SizedBox.shrink();
                       }
 
                       final topTransactions = dashboard.transactions
@@ -596,6 +594,7 @@ class _HomeViewState extends State<_HomeView> {
               onSelected: _handleNavSelection,
             ),
           ),
+          HomeSplashOverlay(ready: _initialLoad),
         ],
       ),
     );
