@@ -1,33 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/app_theme.dart';
-import '../../core/widgets/soft_panel.dart';
-
-class DashboardLoadingCard extends StatelessWidget {
-  const DashboardLoadingCard({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return SoftPanel(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          CircularProgressIndicator(color: colorScheme.secondary),
-          const SizedBox(height: 18),
-          Text(
-            'Preparando seu painel financeiro...',
-            textAlign: TextAlign.center,
-            style: Theme.of(
-              context,
-            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
-          ),
-        ],
-      ),
-    );
-  }
-}
 
 class EmptyStateCard extends StatelessWidget {
   const EmptyStateCard({super.key, required this.onCreate});
