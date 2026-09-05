@@ -22,6 +22,8 @@ class ChatMessage {
     this.status = ChatMessageStatus.sent,
     this.pendingAction,
     this.pendingActionStatus,
+    this.reasoning,
+    this.quickReplies,
   });
 
   factory ChatMessage.userText(String text) => ChatMessage(
@@ -91,11 +93,22 @@ class ChatMessage {
   final Map<String, dynamic>? pendingAction;
   final PendingActionStatus? pendingActionStatus;
 
+  /// The model's reasoning for this reply, parsed from the backend's thought
+  /// markers — shown behind a tap-to-expand tile. Not persisted, same as
+  /// [pendingAction]: it's a transient look-behind-the-scenes, not content.
+  final String? reasoning;
+
+  /// Short quick-reply labels the assistant offered — tapping one sends its
+  /// text as the next user message. Not persisted for the same reason.
+  final List<String>? quickReplies;
+
   ChatMessage copyWith({
     ChatMessageStatus? status,
     String? text,
     Map<String, dynamic>? pendingAction,
     PendingActionStatus? pendingActionStatus,
+    String? reasoning,
+    List<String>? quickReplies,
   }) => ChatMessage(
     id: id,
     sender: sender,
@@ -109,6 +122,8 @@ class ChatMessage {
     status: status ?? this.status,
     pendingAction: pendingAction ?? this.pendingAction,
     pendingActionStatus: pendingActionStatus ?? this.pendingActionStatus,
+    reasoning: reasoning ?? this.reasoning,
+    quickReplies: quickReplies ?? this.quickReplies,
   );
 
   factory ChatMessage.fromJson(Map<String, dynamic> json) {

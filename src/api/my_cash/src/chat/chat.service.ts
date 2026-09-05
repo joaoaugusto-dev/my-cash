@@ -41,6 +41,24 @@ const MAX_MEDIA_CHARS = 4_000_000;
 export const PENDING_ACTION_PREFIX = '[[mycash:pending:';
 export const PENDING_ACTION_SUFFIX = ']]';
 
+/**
+ * Wraps a chunk of the model's "thinking" text so the client can show it in
+ * a collapsible tile instead of mixing it into the answer. Streamed as
+ * several small markers (one per delta) rather than one big block, since
+ * thoughts arrive progressively just like the answer text.
+ */
+export const THOUGHT_PREFIX = '[[mycash:thought:';
+export const THOUGHT_SUFFIX = ']]';
+
+/**
+ * Wraps a JSON array of short quick-reply labels the model offers at the end
+ * of a text answer (e.g. disambiguating a choice) — tapping one sends its
+ * label as the user's next message. Pure text convention: the client renders
+ * it, nothing server-side depends on which option gets picked.
+ */
+export const OPTIONS_PREFIX = '[[mycash:options:';
+export const OPTIONS_SUFFIX = ']]';
+
 const FALLBACK_REPLY = 'Não consegui gerar uma resposta agora. Tente novamente.';
 
 interface ToolCallAccumulator {
@@ -62,6 +80,8 @@ interface GeminiPart {
   // Gemini 3 "thinking" models require this echoed back on the functionCall
   // part in the next turn — without it they reject the request (400).
   thoughtSignature?: string;
+  /** True on a text part that is the model's reasoning, not its answer. */
+  thought?: boolean;
 }
 
 interface GeminiContent {
@@ -133,6 +153,10 @@ export class ChatService {
           (delta) => {
             wroteText = true;
             write(delta);
+          },
+          (thought) => {
+            wroteText = true;
+            write(`${THOUGHT_PREFIX}${JSON.stringify(thought)}${THOUGHT_SUFFIX}`);
           },
         );
 
@@ -226,6 +250,7 @@ export class ChatService {
     conversation: GeminiContent[],
     offerTools: boolean,
     onText: (delta: string) => void,
+    onThought: (delta: string) => void,
   ): Promise<RoundResult> {
     const upstream = await fetch(geminiUrl(model, apiKey), {
       method: 'POST',
@@ -233,6 +258,7 @@ export class ChatService {
       body: JSON.stringify({
         contents: conversation,
         systemInstruction: { parts: [{ text: this.systemPrompt() }] },
+        generationConfig: { thinkingConfig: { includeThoughts: true } },
         ...(offerTools
           ? { tools: [{ functionDeclarations: this.geminiTools() }] }
           : {}),
@@ -268,7 +294,9 @@ export class ChatService {
         if (!parts) continue;
 
         for (const part of parts) {
-          if (part.text) {
+          if (part.text && part.thought) {
+            onThought(part.text);
+          } else if (part.text) {
             text.push(part.text);
             onText(part.text);
           }
@@ -399,6 +427,12 @@ export class ChatService {
       '',
       'FORMATO: as respostas aparecem em balão estreito de celular. Nada de tabelas markdown;',
       'use listas curtas com marcadores e no máximo alguns parágrafos.',
+      '',
+      'RESPOSTA RÁPIDA: quando perguntar algo com poucas respostas óbvias (confirmar sim/não,',
+      'escolher a forma de pagamento, escolher entre 2-4 opções concretas), termine a mensagem',
+      `com ${OPTIONS_PREFIX}["Opção 1","Opção 2"]${OPTIONS_SUFFIX} — 2 a 4 opções curtas, cada`,
+      'uma pronta para ser enviada como se o usuário a tivesse digitado. Não use isso para',
+      'perguntas abertas (valor, descrição, data) nem repita as opções no texto da mensagem.',
     ].join('\n');
   }
 

@@ -15,6 +15,16 @@ import 'chat_composer.dart';
 const String _pendingActionPrefix = '[[mycash:pending:';
 const String _pendingActionSuffix = ']]';
 
+/// Wraps a chunk of the model's reasoning, streamed as several small markers
+/// rather than one block — see `THOUGHT_PREFIX` in the backend.
+const String _thoughtPrefix = '[[mycash:thought:';
+const String _thoughtSuffix = ']]';
+
+/// Wraps a JSON array of quick-reply labels the model offers — see
+/// `OPTIONS_PREFIX` in the backend.
+const String _optionsPrefix = '[[mycash:options:';
+const String _optionsSuffix = ']]';
+
 /// Raw bytes accepted per attachment. Base64 inflates by ~4/3, and the backend
 /// rejects anything past ~4MB encoded — stop before the round trip.
 const int _maxMediaBytes = 2900000;
@@ -43,26 +53,40 @@ class _ChatPageState extends State<ChatPage> {
   bool _isAssistantTyping = false;
   String? _retryNotice;
 
+  /// Whether the user is close enough to the bottom that a new/streaming
+  /// message should keep auto-scrolling — set false once they scroll up to
+  /// read history, so a long reply doesn't yank them back down.
+  bool _isNearBottom = true;
+
   @override
   void initState() {
     super.initState();
     _loadHistory();
+    _scrollController.addListener(_onScroll);
   }
 
   Future<void> _loadHistory() async {
     final history = await _historyStore.load();
     if (!mounted || history.isEmpty) return;
     setState(() => _messages.addAll(history));
-    _scrollToBottom();
+    _scrollToBottom(force: true);
   }
 
   @override
   void dispose() {
+    _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     super.dispose();
   }
 
-  void _scrollToBottom() {
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    final position = _scrollController.position;
+    _isNearBottom = position.maxScrollExtent - position.pixels < 120;
+  }
+
+  void _scrollToBottom({bool force = false}) {
+    if (!force && !_isNearBottom) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_scrollController.hasClients) return;
       _scrollController.animateTo(
@@ -79,7 +103,9 @@ class _ChatPageState extends State<ChatPage> {
       _capMessages();
       _isAssistantTyping = true;
     });
-    _scrollToBottom();
+    // A message the user just sent should always be visible, even if they'd
+    // scrolled up — later streaming deltas fall back to _isNearBottom.
+    _scrollToBottom(force: true);
     unawaited(_historyStore.save(_messages));
 
     final history = <Map<String, dynamic>>[
@@ -113,9 +139,10 @@ class _ChatPageState extends State<ChatPage> {
       await for (final delta in stream) {
         if (_retryNotice != null) setState(() => _retryNotice = null);
         buffer.write(delta);
-        // Parse on the full accumulated text, not the delta — the marker can
+        // Parse on the full accumulated text, not the delta — a marker can
         // arrive split across chunks.
-        final (text, pendingAction) = _stripPendingAction(buffer.toString());
+        final (text, reasoning, pendingAction, quickReplies) =
+            _parseMarkers(buffer.toString());
         setState(() {
           if (assistantMessage == null) {
             _isAssistantTyping = false;
@@ -124,6 +151,8 @@ class _ChatPageState extends State<ChatPage> {
               pendingActionStatus: pendingAction == null
                   ? null
                   : PendingActionStatus.pending,
+              reasoning: reasoning,
+              quickReplies: quickReplies,
             );
             _messages.add(assistantMessage!);
             _capMessages();
@@ -138,6 +167,8 @@ class _ChatPageState extends State<ChatPage> {
                 pendingActionStatus: pendingAction == null
                     ? null
                     : PendingActionStatus.pending,
+                reasoning: reasoning,
+                quickReplies: quickReplies,
               );
             }
           }
@@ -177,30 +208,80 @@ class _ChatPageState extends State<ChatPage> {
     }
   }
 
-  /// Splits a pending-action marker out of the accumulated text. Returns the
-  /// text with the marker (partial or complete) removed, and the decoded
-  /// {tool, args} map once the marker has fully arrived.
-  (String, Map<String, dynamic>?) _stripPendingAction(String text) {
-    final start = text.indexOf(_pendingActionPrefix);
-    if (start == -1) return (text, null);
+  /// Strips every marker the backend can wrap around the answer text —
+  /// reasoning, a pending write action, quick-reply options — out of the
+  /// accumulated stream buffer. Returns the remaining visible text plus each
+  /// marker's decoded payload once it has fully arrived (a marker still
+  /// arriving mid-stream has its partial tail hidden, not shown raw).
+  (String, String?, Map<String, dynamic>?, List<String>?) _parseMarkers(
+    String raw,
+  ) {
+    var text = raw;
 
-    final end = text.indexOf(_pendingActionSuffix, start);
-    if (end == -1) {
-      // Marker started but hasn't finished arriving — hide the partial tail.
-      return (text.substring(0, start).trimRight(), null);
+    final reasoning = StringBuffer();
+    while (true) {
+      final start = text.indexOf(_thoughtPrefix);
+      if (start == -1) break;
+      final end = text.indexOf(_thoughtSuffix, start + _thoughtPrefix.length);
+      if (end == -1) {
+        text = text.substring(0, start);
+        break;
+      }
+      try {
+        final chunk = text.substring(start + _thoughtPrefix.length, end);
+        reasoning.write(jsonDecode(chunk) as String);
+      } catch (_) {}
+      text =
+          text.substring(0, start) +
+          text.substring(end + _thoughtSuffix.length);
     }
 
-    final visible =
-        (text.substring(0, start) +
-                text.substring(end + _pendingActionSuffix.length))
-            .trimRight();
-    try {
-      final json =
-          text.substring(start + _pendingActionPrefix.length, end);
-      return (visible, jsonDecode(json) as Map<String, dynamic>);
-    } catch (_) {
-      return (visible, null);
+    Map<String, dynamic>? pendingAction;
+    final actionStart = text.indexOf(_pendingActionPrefix);
+    if (actionStart != -1) {
+      final actionEnd = text.indexOf(_pendingActionSuffix, actionStart);
+      if (actionEnd == -1) {
+        text = text.substring(0, actionStart);
+      } else {
+        try {
+          final json = text.substring(
+            actionStart + _pendingActionPrefix.length,
+            actionEnd,
+          );
+          pendingAction = jsonDecode(json) as Map<String, dynamic>;
+        } catch (_) {}
+        text =
+            text.substring(0, actionStart) +
+            text.substring(actionEnd + _pendingActionSuffix.length);
+      }
     }
+
+    List<String>? quickReplies;
+    final optionsStart = text.indexOf(_optionsPrefix);
+    if (optionsStart != -1) {
+      final optionsEnd = text.indexOf(_optionsSuffix, optionsStart);
+      if (optionsEnd == -1) {
+        text = text.substring(0, optionsStart);
+      } else {
+        try {
+          final json = text.substring(
+            optionsStart + _optionsPrefix.length,
+            optionsEnd,
+          );
+          quickReplies = (jsonDecode(json) as List).cast<String>();
+        } catch (_) {}
+        text =
+            text.substring(0, optionsStart) +
+            text.substring(optionsEnd + _optionsSuffix.length);
+      }
+    }
+
+    return (
+      text.trimRight(),
+      reasoning.isEmpty ? null : reasoning.toString(),
+      pendingAction,
+      quickReplies,
+    );
   }
 
   Future<void> _confirmPendingAction(ChatMessage message) async {
@@ -394,6 +475,7 @@ class _ChatPageState extends State<ChatPage> {
                           message: message,
                           onConfirmAction: () => _confirmPendingAction(message),
                           onCancelAction: () => _cancelPendingAction(message),
+                          onQuickReply: _sendText,
                         );
                       },
                     ),
