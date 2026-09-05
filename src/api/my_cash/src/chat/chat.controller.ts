@@ -1,5 +1,6 @@
 import { Body, Controller, Post, Req, Res, UseGuards } from '@nestjs/common';
 import type { Response } from 'express';
+import type { ConfirmActionDto } from './dto/confirm-action.dto';
 import type { SendMessageDto } from './dto/send-message.dto';
 import {
   JwtAuthGuard,
@@ -29,6 +30,22 @@ export class ChatController {
         userId: request.user.userId,
       },
       res,
+    );
+  }
+
+  /** Applies a pending action the user confirmed from the preview card. */
+  @Post('confirm')
+  async confirm(
+    @Req() request: AuthenticatedRequest,
+    @Body() dto: ConfirmActionDto,
+  ) {
+    return this.chatService.confirmAction(
+      {
+        authContext: { accessToken: request.user.accessToken },
+        userId: request.user.userId,
+      },
+      dto.tool,
+      dto.args,
     );
   }
 }

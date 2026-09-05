@@ -77,42 +77,58 @@ void main() {
     expect(find.text('Anotado!'), findsOneWidget);
   });
 
-  testWidgets('a reply that changed data refreshes the dashboard and hides the marker', (
-    tester,
-  ) async {
-    var refreshes = 0;
-    final apiService = ChatApiService(
-      apiBaseUrl: 'https://api.example.com',
-      accessTokenProvider: () => 'token-123',
-      client: MockClient.streaming((request, bodyStream) async {
-        return http.StreamedResponse(
-          // The marker is split across chunks, as it can be on the wire.
-          Stream.fromIterable([
-            utf8.encode('Registrado! [[mycash'),
-            utf8.encode(':refresh]]'),
-          ]),
-          200,
-        );
-      }),
-    );
+  testWidgets(
+    'a create_transaction call shows a preview card instead of saving right away',
+    (tester) async {
+      var refreshes = 0;
+      final apiService = ChatApiService(
+        apiBaseUrl: 'https://api.example.com',
+        accessTokenProvider: () => 'token-123',
+        client: MockClient.streaming((request, bodyStream) async {
+          if (request.url.path.endsWith('/chat/confirm')) {
+            return http.StreamedResponse(
+              Stream.value(utf8.encode('{"id":"tx-1"}')),
+              200,
+            );
+          }
+          return http.StreamedResponse(
+            // The marker is split across chunks, as it can be on the wire.
+            Stream.fromIterable([
+              utf8.encode('Beleza! [[mycash:pending:{"tool":"create_'),
+              utf8.encode(
+                'transaction","args":{"title":"Mercado","amount":50}}]]',
+              ),
+            ]),
+            200,
+          );
+        }),
+      );
 
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: ChatPage(
-            apiService: apiService,
-            onDataChanged: () => refreshes++,
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ChatPage(
+              apiService: apiService,
+              onDataChanged: () => refreshes++,
+            ),
           ),
         ),
-      ),
-    );
-    await tester.enterText(find.byType(TextField), 'gastei 50 no mercado');
-    await tester.pump();
-    await tester.tap(find.byIcon(Icons.send_rounded));
-    await tester.pumpAndSettle();
+      );
+      await tester.enterText(find.byType(TextField), 'gastei 50 no mercado');
+      await tester.pump();
+      await tester.tap(find.byIcon(Icons.send_rounded));
+      await tester.pumpAndSettle();
 
-    expect(refreshes, 1);
-    expect(find.text('Registrado!'), findsOneWidget);
-    expect(find.textContaining('mycash:refresh'), findsNothing);
-  });
+      expect(find.text('Beleza!'), findsOneWidget);
+      expect(find.textContaining('mycash:pending'), findsNothing);
+      expect(find.text('Registrar transação'), findsOneWidget);
+      expect(refreshes, 0);
+
+      await tester.tap(find.text('Confirmar'));
+      await tester.pumpAndSettle();
+
+      expect(refreshes, 1);
+      expect(find.text('Salvo'), findsOneWidget);
+    },
+  );
 }

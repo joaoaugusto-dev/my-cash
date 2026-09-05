@@ -10,9 +10,20 @@ import 'package:my_cash/src/domain/models/chat_message.dart';
 import 'package:my_cash/src/ui/core/theme/app_theme.dart';
 
 class ChatBubble extends StatelessWidget {
-  const ChatBubble({super.key, required this.message});
+  const ChatBubble({
+    super.key,
+    required this.message,
+    this.onConfirmAction,
+    this.onCancelAction,
+  });
 
   final ChatMessage message;
+
+  /// Wired only when [message] carries a pending action — tapping the
+  /// preview card's buttons calls these instead of the card managing its
+  /// own state, so ChatPage stays the single owner of message state.
+  final VoidCallback? onConfirmAction;
+  final VoidCallback? onCancelAction;
 
   @override
   Widget build(BuildContext context) {
@@ -98,10 +109,29 @@ class ChatBubble extends StatelessWidget {
       case ChatMessageKind.text:
         final text = message.text ?? '';
         if (message.sender == ChatSender.assistant) {
-          return MarkdownBody(
-            data: text,
-            selectable: true,
-            styleSheet: _markdownStyleSheet(context, textColor),
+          final pendingAction = message.pendingAction;
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (text.isNotEmpty)
+                MarkdownBody(
+                  data: text,
+                  selectable: true,
+                  styleSheet: _markdownStyleSheet(context, textColor),
+                ),
+              if (pendingAction != null) ...[
+                if (text.isNotEmpty) const SizedBox(height: 8),
+                _PendingActionCard(
+                  action: pendingAction,
+                  status:
+                      message.pendingActionStatus ??
+                      PendingActionStatus.pending,
+                  onConfirm: onConfirmAction,
+                  onCancel: onCancelAction,
+                ),
+              ],
+            ],
           );
         }
         return Text(
@@ -333,4 +363,204 @@ String _formatDuration(Duration d) {
   final minutes = d.inMinutes.remainder(60).toString().padLeft(2, '0');
   final seconds = d.inSeconds.remainder(60).toString().padLeft(2, '0');
   return '$minutes:$seconds';
+}
+
+/// A write action (create/update/delete transaction) the assistant proposed,
+/// shown as a card the user taps to confirm or cancel before anything is
+/// actually saved — the literal "preview" of what will be registered.
+class _PendingActionCard extends StatelessWidget {
+  const _PendingActionCard({
+    required this.action,
+    required this.status,
+    required this.onConfirm,
+    required this.onCancel,
+  });
+
+  final Map<String, dynamic> action;
+  final PendingActionStatus status;
+  final VoidCallback? onConfirm;
+  final VoidCallback? onCancel;
+
+  String get _tool => action['tool'] as String? ?? '';
+  Map<String, dynamic> get _args =>
+      (action['args'] as Map?)?.cast<String, dynamic>() ?? const {};
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Container(
+      width: 260,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
+        borderRadius: BorderRadius.circular(AppRadii.sm),
+        border: Border.all(color: colorScheme.outline.withValues(alpha: 0.4)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Icon(_icon, size: 18, color: colorScheme.secondary),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  _title,
+                  style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          ..._fields(context),
+          const SizedBox(height: 10),
+          _footer(context, colorScheme),
+        ],
+      ),
+    );
+  }
+
+  IconData get _icon => switch (_tool) {
+    'create_transaction' => Icons.add_circle_outline_rounded,
+    'update_transaction' => Icons.edit_outlined,
+    'delete_transaction' => Icons.delete_outline_rounded,
+    _ => Icons.receipt_long_outlined,
+  };
+
+  String get _title => switch (_tool) {
+    'create_transaction' => 'Registrar transação',
+    'update_transaction' => 'Alterar transação',
+    'delete_transaction' => 'Apagar transação',
+    _ => 'Confirmar ação',
+  };
+
+  List<Widget> _fields(BuildContext context) {
+    final style = Theme.of(context).textTheme.bodySmall;
+    final rows = <Widget>[];
+
+    void addRow(String label, String? value) {
+      if (value == null || value.isEmpty) return;
+      rows.add(
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 1.5),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                width: 70,
+                child: Text(label, style: style?.copyWith(fontWeight: FontWeight.w600)),
+              ),
+              Expanded(child: Text(value, style: style)),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final title = _args['title'] as String?;
+    final amount = _args['amount'];
+    final category = _args['category'] as String?;
+    final occurredAt = _args['occurredAt'] as String?;
+    final source = _args['source'] as String?;
+    final installments = _args['installmentsTotal'];
+    final recurrence = _args['recurrenceFrequency'] as String?;
+
+    addRow('Id', _tool != 'create_transaction' ? _args['id'] as String? : null);
+    addRow('Descrição', title);
+    addRow(
+      'Valor',
+      amount is num ? 'R\$ ${amount.toStringAsFixed(2).replaceAll('.', ',')}' : null,
+    );
+    addRow('Categoria', category);
+    addRow('Data', occurredAt);
+    addRow('Forma', source);
+    addRow('Parcelas', installments is num ? '${installments.toInt()}x' : null);
+    addRow('Recorrência', _recurrenceLabel(recurrence));
+
+    if (rows.isEmpty) {
+      rows.add(Text('Sem alterações informadas.', style: style));
+    }
+    return rows;
+  }
+
+  String? _recurrenceLabel(String? value) => switch (value) {
+    'weekly' => 'Semanal',
+    'monthly' => 'Mensal',
+    'yearly' => 'Anual',
+    _ => null,
+  };
+
+  Widget _footer(BuildContext context, ColorScheme colorScheme) {
+    switch (status) {
+      case PendingActionStatus.pending:
+        return Wrap(
+          alignment: WrapAlignment.end,
+          spacing: 4,
+          children: [
+            TextButton(
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              onPressed: onCancel,
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              onPressed: onConfirm,
+              child: const Text('Confirmar'),
+            ),
+          ],
+        );
+      case PendingActionStatus.confirming:
+        return const Align(
+          alignment: Alignment.centerRight,
+          child: SizedBox(
+            width: 18,
+            height: 18,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        );
+      case PendingActionStatus.confirmed:
+        return _statusLine(Icons.check_circle_rounded, 'Salvo', colorScheme.secondary);
+      case PendingActionStatus.cancelled:
+        return _statusLine(
+          Icons.cancel_outlined,
+          'Cancelado',
+          colorScheme.onSurface.withValues(alpha: 0.6),
+        );
+      case PendingActionStatus.failed:
+        return Wrap(
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 8,
+          children: [
+            Text(
+              'Falhou ao salvar.',
+              style: TextStyle(color: colorScheme.error, fontSize: 12),
+            ),
+            TextButton(onPressed: onConfirm, child: const Text('Tentar de novo')),
+          ],
+        );
+    }
+  }
+
+  Widget _statusLine(IconData icon, String text, Color color) {
+    return Wrap(
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: 6,
+      children: [
+        Icon(icon, size: 16, color: color),
+        Text(text, style: TextStyle(color: color, fontSize: 13)),
+      ],
+    );
+  }
 }

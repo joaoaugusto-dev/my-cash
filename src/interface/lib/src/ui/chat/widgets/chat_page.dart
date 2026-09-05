@@ -10,9 +10,10 @@ import 'package:my_cash/src/domain/models/chat_message.dart';
 import 'chat_bubble.dart';
 import 'chat_composer.dart';
 
-/// Written by the backend at the end of a reply whose tools changed data.
-/// Stripped from the text before rendering; its arrival triggers a reload.
-const String _refreshMarker = '[[mycash:refresh]]';
+/// Wraps a write action (create/update/delete) the backend held back for the
+/// user to confirm — parsed out of the text and rendered as a preview card.
+const String _pendingActionPrefix = '[[mycash:pending:';
+const String _pendingActionSuffix = ']]';
 
 /// Raw bytes accepted per attachment. Base64 inflates by ~4/3, and the backend
 /// rejects anything past ~4MB encoded — stop before the round trip.
@@ -96,7 +97,6 @@ class _ChatPageState extends State<ChatPage> {
 
     ChatMessage? assistantMessage;
     final buffer = StringBuffer();
-    var dataChanged = false;
 
     try {
       final stream = widget.apiService.streamMessage(
@@ -113,17 +113,18 @@ class _ChatPageState extends State<ChatPage> {
       await for (final delta in stream) {
         if (_retryNotice != null) setState(() => _retryNotice = null);
         buffer.write(delta);
-        // Strip on the full accumulated text, not the delta — the marker can
+        // Parse on the full accumulated text, not the delta — the marker can
         // arrive split across chunks.
-        var text = buffer.toString();
-        if (text.contains(_refreshMarker)) {
-          dataChanged = true;
-          text = text.replaceAll(_refreshMarker, '').trimRight();
-        }
+        final (text, pendingAction) = _stripPendingAction(buffer.toString());
         setState(() {
           if (assistantMessage == null) {
             _isAssistantTyping = false;
-            assistantMessage = ChatMessage.assistantText(text);
+            assistantMessage = ChatMessage.assistantText(text).copyWith(
+              pendingAction: pendingAction,
+              pendingActionStatus: pendingAction == null
+                  ? null
+                  : PendingActionStatus.pending,
+            );
             _messages.add(assistantMessage!);
             _capMessages();
           } else {
@@ -131,14 +132,18 @@ class _ChatPageState extends State<ChatPage> {
               (m) => m.id == assistantMessage!.id,
             );
             if (index != -1) {
-              _messages[index] = _messages[index].copyWith(text: text);
+              _messages[index] = _messages[index].copyWith(
+                text: text,
+                pendingAction: pendingAction,
+                pendingActionStatus: pendingAction == null
+                    ? null
+                    : PendingActionStatus.pending,
+              );
             }
           }
         });
         _scrollToBottom();
       }
-
-      if (dataChanged) widget.onDataChanged();
 
       if (assistantMessage == null) {
         // Stream produced no deltas — shouldn't normally happen, the backend
@@ -170,6 +175,75 @@ class _ChatPageState extends State<ChatPage> {
       _scrollToBottom();
       unawaited(_historyStore.save(_messages));
     }
+  }
+
+  /// Splits a pending-action marker out of the accumulated text. Returns the
+  /// text with the marker (partial or complete) removed, and the decoded
+  /// {tool, args} map once the marker has fully arrived.
+  (String, Map<String, dynamic>?) _stripPendingAction(String text) {
+    final start = text.indexOf(_pendingActionPrefix);
+    if (start == -1) return (text, null);
+
+    final end = text.indexOf(_pendingActionSuffix, start);
+    if (end == -1) {
+      // Marker started but hasn't finished arriving — hide the partial tail.
+      return (text.substring(0, start).trimRight(), null);
+    }
+
+    final visible =
+        (text.substring(0, start) +
+                text.substring(end + _pendingActionSuffix.length))
+            .trimRight();
+    try {
+      final json =
+          text.substring(start + _pendingActionPrefix.length, end);
+      return (visible, jsonDecode(json) as Map<String, dynamic>);
+    } catch (_) {
+      return (visible, null);
+    }
+  }
+
+  Future<void> _confirmPendingAction(ChatMessage message) async {
+    final action = message.pendingAction;
+    if (action == null) return;
+
+    void update(PendingActionStatus status) {
+      if (!mounted) return;
+      setState(() {
+        final index = _messages.indexWhere((m) => m.id == message.id);
+        if (index != -1) {
+          _messages[index] = _messages[index].copyWith(
+            pendingActionStatus: status,
+          );
+        }
+      });
+    }
+
+    update(PendingActionStatus.confirming);
+    try {
+      await widget.apiService.confirmAction(
+        action['tool'] as String,
+        Map<String, dynamic>.from(action['args'] as Map),
+      );
+      update(PendingActionStatus.confirmed);
+      widget.onDataChanged();
+    } catch (_) {
+      update(PendingActionStatus.failed);
+    } finally {
+      unawaited(_historyStore.save(_messages));
+    }
+  }
+
+  void _cancelPendingAction(ChatMessage message) {
+    setState(() {
+      final index = _messages.indexWhere((m) => m.id == message.id);
+      if (index != -1) {
+        _messages[index] = _messages[index].copyWith(
+          pendingActionStatus: PendingActionStatus.cancelled,
+        );
+      }
+    });
+    unawaited(_historyStore.save(_messages));
   }
 
   /// Keeps at most [ChatHistoryStore.maxMessages] messages, dropping the
@@ -315,7 +389,12 @@ class _ChatPageState extends State<ChatPage> {
                         if (index == _messages.length) {
                           return const _TypingBubble();
                         }
-                        return ChatBubble(message: _messages[index]);
+                        final message = _messages[index];
+                        return ChatBubble(
+                          message: message,
+                          onConfirmAction: () => _confirmPendingAction(message),
+                          onCancelAction: () => _cancelPendingAction(message),
+                        );
                       },
                     ),
                   ),

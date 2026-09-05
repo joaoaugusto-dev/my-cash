@@ -32,10 +32,14 @@ const MAX_TOOL_ROUNDS = 5;
 const MAX_MEDIA_CHARS = 4_000_000;
 
 /**
- * Written once at the end of the stream when a tool changed data, so the app
- * knows to reload the dashboard. The client strips it before rendering.
+ * Wraps a pending write-tool call (create/update/delete) in the text stream
+ * instead of running it — the client parses the JSON between these markers,
+ * shows a confirmation card, and only then hits POST /chat/confirm to
+ * actually apply it. Keeps the write off the model's turn loop entirely, so
+ * confirming never costs another Gemini round trip.
  */
-export const REFRESH_MARKER = '[[mycash:refresh]]';
+export const PENDING_ACTION_PREFIX = '[[mycash:pending:';
+export const PENDING_ACTION_SUFFIX = ']]';
 
 const FALLBACK_REPLY = 'Não consegui gerar uma resposta agora. Tente novamente.';
 
@@ -115,7 +119,6 @@ export class ChatService {
       res.write(chunk);
     };
 
-    let dataChanged = false;
     let wroteText = false;
 
     try {
@@ -137,6 +140,22 @@ export class ChatService {
           break;
         }
 
+        // A write call ends the turn right here: its args go to the client as
+        // a pending action for the user to confirm, never executed by us.
+        const pendingCall = result.toolCalls.find((call) =>
+          WRITE_TOOLS.has(call.name),
+        );
+        if (pendingCall) {
+          wroteText = true;
+          write(
+            `\n${PENDING_ACTION_PREFIX}${JSON.stringify({
+              tool: pendingCall.name,
+              args: pendingCall.args,
+            })}${PENDING_ACTION_SUFFIX}`,
+          );
+          break;
+        }
+
         conversation.push({
           role: 'model',
           parts: [
@@ -150,9 +169,6 @@ export class ChatService {
 
         for (const call of result.toolCalls) {
           const output = await this.tools.run(ctx, call.name, call.args);
-          if (WRITE_TOOLS.has(call.name)) {
-            dataChanged = true;
-          }
           conversation.push({
             role: 'function',
             parts: [
@@ -171,22 +187,33 @@ export class ChatService {
         write(FALLBACK_REPLY);
       }
     } catch (error) {
-      // Nothing written yet and nothing changed — let the exception filter
-      // answer with a real status code.
-      if (!headersSent && !dataChanged) {
+      // Nothing written yet — let the exception filter answer with a real
+      // status code instead of a half-streamed body.
+      if (!headersSent) {
         throw error;
       }
-      // Already streaming (or a write already landed, so the client must still
-      // get the refresh marker) — the failure has to reach the user as text.
       write('\n\nTive um problema para concluir a resposta. Tente de novo.');
     } finally {
       if (headersSent) {
-        if (dataChanged) {
-          write(REFRESH_MARKER);
-        }
         res.end();
       }
     }
+  }
+
+  /**
+   * Applies a write tool the user confirmed from the pending-action card.
+   * Runs it directly against the user's data — no Gemini call involved, so
+   * confirming is instant and free.
+   */
+  async confirmAction(
+    ctx: ToolContext,
+    tool: string,
+    args: Record<string, unknown>,
+  ): Promise<unknown> {
+    if (!WRITE_TOOLS.has(tool)) {
+      throw new BadRequestException(`ação inválida: ${tool}`);
+    }
+    return JSON.parse(await this.tools.run(ctx, tool, args ?? {}));
   }
 
   /**
@@ -335,8 +362,9 @@ export class ChatService {
       'REGISTRAR: quando o usuário contar um gasto ou ganho (texto, áudio ou foto de nota),',
       'converse de verdade antes de lançar — não é um formulário. Se faltar valor, data ou',
       'forma de pagamento, PERGUNTE em vez de chutar ou deixar em branco; se não entender',
-      'algo, peça para confirmar. Só depois de ter o que precisa, chame create_transaction',
-      'e confirme em uma frase o que registrou.',
+      'algo, peça para confirmar. Só depois de ter o que precisa, chame create_transaction.',
+      'O app mostra um cartão com os dados antes de salvar de verdade — não repita os',
+      'dados em texto, no máximo um comentário curto.',
       '',
       'FORMA DE PAGAMENTO: nunca crie a transação sem saber a forma de pagamento (source).',
       'Se o usuário não disse, pergunte OFERECENDO AS OPÇÕES — despesa: "Pix", "Débito",',
@@ -358,10 +386,9 @@ export class ChatService {
       '— preencha recurrenceFrequency com weekly/monthly/yearly conforme o que foi dito.',
       'Sem recurrenceFrequency a cobrança fica como um lançamento único, isolado.',
       '',
-      'ALTERAR E APAGAR: nunca chame update_transaction ou delete_transaction sem o usuário',
-      'ter confirmado explicitamente naquela conversa. Primeiro mostre o que será alterado ou',
-      'apagado (descrição, valor e data) e pergunte se pode. Só depois do "sim" execute, uma',
-      'transação por vez.',
+      'ALTERAR E APAGAR: ache a transação com list_transactions e chame update_transaction ou',
+      'delete_transaction direto, uma por vez — o app mostra um cartão de confirmação antes',
+      'de aplicar, então não pergunte "posso apagar?" antes de chamar a ferramenta.',
       '',
       'FOTO DE NOTA/COMPROVANTE: extraia estabelecimento, valor total e data.',
       'ÁUDIO: comece confirmando em poucas palavras o que entendeu, depois responda.',

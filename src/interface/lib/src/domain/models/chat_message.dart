@@ -4,6 +4,10 @@ enum ChatMessageKind { text, image, audio }
 
 enum ChatMessageStatus { sending, sent, failed }
 
+/// State of a write action (create/update/delete) the assistant proposed but
+/// hasn't applied yet — the user confirms or cancels it from a preview card.
+enum PendingActionStatus { pending, confirming, confirmed, cancelled, failed }
+
 class ChatMessage {
   ChatMessage({
     required this.id,
@@ -16,6 +20,8 @@ class ChatMessage {
     this.captionAudioPath,
     this.captionAudioDuration,
     this.status = ChatMessageStatus.sent,
+    this.pendingAction,
+    this.pendingActionStatus,
   });
 
   factory ChatMessage.userText(String text) => ChatMessage(
@@ -78,19 +84,32 @@ class ChatMessage {
   final DateTime createdAt;
   final ChatMessageStatus status;
 
-  ChatMessage copyWith({ChatMessageStatus? status, String? text}) =>
-      ChatMessage(
-        id: id,
-        sender: sender,
-        kind: kind,
-        text: text ?? this.text,
-        mediaPath: mediaPath,
-        audioDuration: audioDuration,
-        captionAudioPath: captionAudioPath,
-        captionAudioDuration: captionAudioDuration,
-        createdAt: createdAt,
-        status: status ?? this.status,
-      );
+  /// {tool, args} for a write call the assistant proposed, parsed from the
+  /// backend's pending-action marker. Not persisted: a pending card left
+  /// over from a killed app is a rare edge case, not worth carrying history
+  /// storage for — it just won't reappear after a restart.
+  final Map<String, dynamic>? pendingAction;
+  final PendingActionStatus? pendingActionStatus;
+
+  ChatMessage copyWith({
+    ChatMessageStatus? status,
+    String? text,
+    Map<String, dynamic>? pendingAction,
+    PendingActionStatus? pendingActionStatus,
+  }) => ChatMessage(
+    id: id,
+    sender: sender,
+    kind: kind,
+    text: text ?? this.text,
+    mediaPath: mediaPath,
+    audioDuration: audioDuration,
+    captionAudioPath: captionAudioPath,
+    captionAudioDuration: captionAudioDuration,
+    createdAt: createdAt,
+    status: status ?? this.status,
+    pendingAction: pendingAction ?? this.pendingAction,
+    pendingActionStatus: pendingActionStatus ?? this.pendingActionStatus,
+  );
 
   factory ChatMessage.fromJson(Map<String, dynamic> json) {
     return ChatMessage(
