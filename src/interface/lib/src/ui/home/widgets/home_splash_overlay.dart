@@ -15,9 +15,13 @@ const _typeDuration = Duration(milliseconds: 65 * _appName.length);
 /// un-draws) rather than just being faded — the backdrop only fades once
 /// that finishes, clearing to reveal the already fully-loaded dashboard.
 class HomeSplashOverlay extends StatefulWidget {
-  const HomeSplashOverlay({super.key, required this.ready});
+  const HomeSplashOverlay({super.key, required this.ready, this.onDismissed});
 
   final Future<void> ready;
+
+  /// Fired once the overlay has cleared, so whatever comes next (the
+  /// first-run tour) starts on a settled screen instead of over the splash.
+  final VoidCallback? onDismissed;
 
   @override
   State<HomeSplashOverlay> createState() => _HomeSplashOverlayState();
@@ -59,6 +63,7 @@ class _HomeSplashOverlayState extends State<HomeSplashOverlay>
     await _backdropFade.forward();
     if (!mounted) return;
     setState(() => _removed = true);
+    widget.onDismissed?.call();
   }
 
   @override
@@ -184,8 +189,7 @@ class _Signature extends StatefulWidget {
   State<_Signature> createState() => _SignatureState();
 }
 
-class _SignatureState extends State<_Signature>
-    with TickerProviderStateMixin {
+class _SignatureState extends State<_Signature> with TickerProviderStateMixin {
   late final AnimationController _fade = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 300),
