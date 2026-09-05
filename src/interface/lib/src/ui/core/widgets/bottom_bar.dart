@@ -50,11 +50,16 @@ class FloatingBottomBar extends StatelessWidget {
     required this.pageController,
     required this.selectedIndex,
     required this.onSelected,
+    this.itemKeys,
   });
 
   final PageController pageController;
   final int selectedIndex;
   final ValueChanged<int> onSelected;
+
+  /// Optional per-item keys, so the onboarding tour can spotlight a single
+  /// nav item.
+  final List<GlobalKey>? itemKeys;
 
   @override
   Widget build(BuildContext context) {
@@ -143,6 +148,7 @@ class FloatingBottomBar extends StatelessWidget {
                       Row(
                         children: [
                           _BottomNavItem(
+                            key: itemKeys?[0],
                             index: 0,
                             selectedIndex: selectedIndex,
                             icon: Icons.home_rounded,
@@ -152,6 +158,7 @@ class FloatingBottomBar extends StatelessWidget {
                             onSelected: onSelected,
                           ),
                           _BottomNavItem(
+                            key: itemKeys?[1],
                             index: 1,
                             selectedIndex: selectedIndex,
                             icon: Icons.list_alt_rounded,
@@ -161,6 +168,7 @@ class FloatingBottomBar extends StatelessWidget {
                             onSelected: onSelected,
                           ),
                           _BottomNavItem(
+                            key: itemKeys?[2],
                             index: 2,
                             selectedIndex: selectedIndex,
                             icon: Icons.credit_card_rounded,
@@ -170,6 +178,7 @@ class FloatingBottomBar extends StatelessWidget {
                             onSelected: onSelected,
                           ),
                           _BottomNavItem(
+                            key: itemKeys?[3],
                             index: 3,
                             selectedIndex: selectedIndex,
                             icon: Icons.auto_awesome_rounded,
@@ -179,6 +188,7 @@ class FloatingBottomBar extends StatelessWidget {
                             onSelected: onSelected,
                           ),
                           _BottomNavItem(
+                            key: itemKeys?[4],
                             index: 4,
                             selectedIndex: selectedIndex,
                             icon: Icons.person_outline_rounded,
@@ -203,6 +213,7 @@ class FloatingBottomBar extends StatelessWidget {
 
 class _BottomNavItem extends StatelessWidget {
   const _BottomNavItem({
+    super.key,
     required this.index,
     required this.selectedIndex,
     required this.icon,

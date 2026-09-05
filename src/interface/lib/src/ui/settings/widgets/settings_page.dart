@@ -1,5 +1,4 @@
 import 'dart:typed_data';
-import 'dart:ui';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -779,7 +778,7 @@ Future<void> showAboutAppDialog(BuildContext context) {
     context: context,
     barrierDismissible: true,
     barrierLabel: 'Sobre o app',
-    barrierColor: Colors.black.withValues(alpha: 0.35),
+    barrierColor: Colors.black.withValues(alpha: 0.8),
     transitionDuration: const Duration(milliseconds: 220),
     pageBuilder: (context, animation, secondaryAnimation) {
       return const _AboutAppDialog();
@@ -789,17 +788,11 @@ Future<void> showAboutAppDialog(BuildContext context) {
         parent: animation,
         curve: Curves.easeOutCubic,
       );
-      return BackdropFilter(
-        filter: ImageFilter.blur(
-          sigmaX: 18 * curved.value,
-          sigmaY: 18 * curved.value,
-        ),
-        child: FadeTransition(
-          opacity: curved,
-          child: ScaleTransition(
-            scale: Tween<double>(begin: 0.92, end: 1).animate(curved),
-            child: child,
-          ),
+      return FadeTransition(
+        opacity: curved,
+        child: ScaleTransition(
+          scale: Tween<double>(begin: 0.92, end: 1).animate(curved),
+          child: child,
         ),
       );
     },

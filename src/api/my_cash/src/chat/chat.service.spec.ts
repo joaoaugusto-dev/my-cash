@@ -1,7 +1,11 @@
 import { ConfigService } from '@nestjs/config';
 import { BadGatewayException, BadRequestException } from '@nestjs/common';
 import type { Response } from 'express';
-import { ChatService, REFRESH_MARKER } from './chat.service';
+import {
+  ChatService,
+  PENDING_ACTION_PREFIX,
+  PENDING_ACTION_SUFFIX,
+} from './chat.service';
 import type { ChatTools } from './chat.tools';
 
 const ctx = {
@@ -177,14 +181,16 @@ describe('ChatService', () => {
     );
   });
 
-  it('runs a requested tool with the caller identity and feeds the result back', async () => {
+  it('turns a write-tool call into a pending-action marker instead of running it', async () => {
     const run = jest.fn().mockResolvedValue('{"id":"tx-1"}');
-    const fetchSpy = jest
+    jest
       .spyOn(global, 'fetch')
       .mockResolvedValueOnce(
-        toolCallResponse('create_transaction', { title: 'Mercado', amount: 50 }),
-      )
-      .mockResolvedValueOnce(textSseResponse(['Registrado!']));
+        sseResponse([
+          { text: 'Beleza, vou registrar: ' },
+          { functionCall: { name: 'create_transaction', args: { title: 'Mercado', amount: 50 } } },
+        ]),
+      );
     const service = makeService(
       { GEMINI_APIKEY: 'key', GEMINI_MODEL: 'model' },
       { run },
@@ -193,27 +199,44 @@ describe('ChatService', () => {
 
     await service.streamReply([{ role: 'user', content: 'gastei 50' }], ctx, res);
 
+    expect(run).not.toHaveBeenCalled();
+    const body = chunks.join('');
+    expect(body).toContain('Beleza, vou registrar: ');
+    const start = body.indexOf(PENDING_ACTION_PREFIX) + PENDING_ACTION_PREFIX.length;
+    const end = body.indexOf(PENDING_ACTION_SUFFIX, start);
+    expect(JSON.parse(body.slice(start, end))).toEqual({
+      tool: 'create_transaction',
+      args: { title: 'Mercado', amount: 50 },
+    });
+  });
+
+  it('confirmAction runs the write tool directly with no Gemini call', async () => {
+    const run = jest.fn().mockResolvedValue('{"id":"tx-1"}');
+    const fetchSpy = jest.spyOn(global, 'fetch');
+    const service = makeService(
+      { GEMINI_APIKEY: 'key', GEMINI_MODEL: 'model' },
+      { run },
+    );
+
+    const result = await service.confirmAction(ctx, 'create_transaction', {
+      title: 'Mercado',
+      amount: 50,
+    });
+
     expect(run).toHaveBeenCalledWith(ctx, 'create_transaction', {
       title: 'Mercado',
       amount: 50,
     });
-    // A write tool ran, so the client is told to reload the dashboard.
-    expect(chunks.join('')).toBe(`Registrado!${REFRESH_MARKER}`);
+    expect(result).toEqual({ id: 'tx-1' });
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
 
-    const followUp = JSON.parse(
-      (fetchSpy.mock.calls[1][1]?.body as string) ?? '{}',
-    );
-    expect(followUp.contents.at(-1)).toEqual({
-      role: 'function',
-      parts: [
-        {
-          functionResponse: {
-            name: 'create_transaction',
-            response: { result: { id: 'tx-1' } },
-          },
-        },
-      ],
-    });
+  it('confirmAction rejects a tool outside the write set', async () => {
+    const service = makeService({ GEMINI_APIKEY: 'key', GEMINI_MODEL: 'model' });
+
+    await expect(
+      service.confirmAction(ctx, 'list_transactions', {}),
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('does not signal a refresh for read-only tools', async () => {

@@ -79,6 +79,24 @@ class ChatApiService {
         lower.contains('overloaded');
   }
 
+  /// Applies a pending write action the user confirmed from the preview
+  /// card. No AI call involved — this hits the tool directly, so it's
+  /// instant and costs no tokens.
+  Future<Map<String, dynamic>> confirmAction(
+    String tool,
+    Map<String, dynamic> args,
+  ) async {
+    final response = await _client.post(
+      _uri('/chat/confirm'),
+      headers: await _headers(),
+      body: jsonEncode({'tool': tool, 'args': args}),
+    );
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('Não consegui salvar (${response.statusCode}).');
+    }
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
   Uri _uri(String path) {
     final normalizedBaseUrl = apiBaseUrl.endsWith('/')
         ? apiBaseUrl

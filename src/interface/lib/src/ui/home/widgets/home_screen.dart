@@ -6,6 +6,7 @@ import 'package:my_cash/src/ui/cards/widgets/cards_page.dart';
 import 'package:my_cash/src/domain/models/credit_card.dart';
 import 'package:my_cash/src/domain/models/financial_transaction.dart';
 import 'package:my_cash/src/ui/core/theme/app_theme_controller.dart';
+import 'package:my_cash/src/ui/onboarding/widgets/onboarding_tour.dart';
 import 'package:my_cash/src/ui/settings/widgets/settings_page.dart';
 import '../../../utils/formatters.dart';
 import '../../core/widgets/animated_section.dart';
@@ -62,6 +63,8 @@ class _HomeViewState extends State<_HomeView> {
   int _selectedNavIndex = 0;
   late final PageController _pageController;
   late final Future<void> _initialLoad;
+  final OnboardingTargets _tourTargets = OnboardingTargets();
+  bool _showTour = false;
 
   @override
   void initState() {
@@ -78,6 +81,14 @@ class _HomeViewState extends State<_HomeView> {
   void dispose() {
     _pageController.dispose();
     super.dispose();
+  }
+
+  /// Runs after the splash clears, on the user's first arrival here.
+  Future<void> _maybeStartTour() async {
+    final userId = _vm.session.user.id;
+    if (!await shouldShowOnboardingTour(userId)) return;
+    if (!mounted) return;
+    setState(() => _showTour = true);
   }
 
   HomeViewModel get _vm => context.read<HomeViewModel>();
@@ -415,130 +426,151 @@ class _HomeViewState extends State<_HomeView> {
                         children: [
                           AnimatedSection(
                             order: 0,
-                            child: TopIdentityBar(
-                              firstName: firstName,
-                              avatarUrl: vm.resolvedAvatarUrl,
-                              profileInitials: profileInitials,
-                              isResolvingAvatar: vm.isResolvingAvatar,
-                              onProfile: _openSettings,
-                              onSignOut: () async {
-                                await Supabase.instance.client.auth.signOut();
-                              },
+                            child: KeyedSubtree(
+                              key: _tourTargets.identity,
+                              child: TopIdentityBar(
+                                firstName: firstName,
+                                avatarUrl: vm.resolvedAvatarUrl,
+                                profileInitials: profileInitials,
+                                isResolvingAvatar: vm.isResolvingAvatar,
+                                onProfile: _openSettings,
+                                onSignOut: () async {
+                                  await Supabase.instance.client.auth.signOut();
+                                },
+                              ),
                             ),
                           ),
                           const SizedBox(height: 22),
                           AnimatedSection(
                             order: 1,
-                            child: PeriodAndVisionRow(
-                              label: vm.visionMode == VisionMode.yearly
-                                  ? vm.selectedYear
-                                  : formatMonthLabel(vm.selectedMonth),
-                              isYearly: vm.visionMode == VisionMode.yearly,
-                              onToggleVision: vm.toggleVisionMode,
-                              onPrevious: vm.goToPreviousPeriod,
-                              onNext: vm.goToNextPeriod,
-                              onTapPeriod: _showPeriodPicker,
-                              showTodayButton: !vm.isCurrentPeriod,
-                              onTapToday: vm.goToCurrentPeriod,
+                            child: KeyedSubtree(
+                              key: _tourTargets.period,
+                              child: PeriodAndVisionRow(
+                                label: vm.visionMode == VisionMode.yearly
+                                    ? vm.selectedYear
+                                    : formatMonthLabel(vm.selectedMonth),
+                                isYearly: vm.visionMode == VisionMode.yearly,
+                                onToggleVision: vm.toggleVisionMode,
+                                onPrevious: vm.goToPreviousPeriod,
+                                onNext: vm.goToNextPeriod,
+                                onTapPeriod: _showPeriodPicker,
+                                showTodayButton: !vm.isCurrentPeriod,
+                                onTapToday: vm.goToCurrentPeriod,
+                              ),
                             ),
                           ),
                           const SizedBox(height: 20),
                           AnimatedSection(
                             order: 2,
-                            child: StatCardsScroller(
-                              cards: [
-                                FinanceStatCard(
-                                  title: 'Entradas',
-                                  value: formatCurrency(
-                                    dashboard.summary.income,
+                            child: KeyedSubtree(
+                              key: _tourTargets.stats,
+                              child: StatCardsScroller(
+                                cards: [
+                                  FinanceStatCard(
+                                    title: 'Entradas',
+                                    value: formatCurrency(
+                                      dashboard.summary.income,
+                                    ),
+                                    subtitle:
+                                        '${dashboard.summary.entriesCount} registros',
+                                    icon: Icons.arrow_upward_rounded,
+                                    color: colorScheme.tertiary,
                                   ),
-                                  subtitle:
-                                      '${dashboard.summary.entriesCount} registros',
-                                  icon: Icons.arrow_upward_rounded,
-                                  color: colorScheme.tertiary,
-                                ),
-                                FinanceStatCard(
-                                  title: 'Saídas',
-                                  value: formatCurrency(
-                                    dashboard.summary.expense,
+                                  FinanceStatCard(
+                                    title: 'Saídas',
+                                    value: formatCurrency(
+                                      dashboard.summary.expense,
+                                    ),
+                                    subtitle:
+                                        '${dashboard.summary.exitsCount} registros',
+                                    icon: Icons.arrow_downward_rounded,
+                                    color: colorScheme.error,
                                   ),
-                                  subtitle:
-                                      '${dashboard.summary.exitsCount} registros',
-                                  icon: Icons.arrow_downward_rounded,
-                                  color: colorScheme.error,
-                                ),
-                                FinanceStatCard(
-                                  title: 'Saldo',
-                                  value: formatCurrency(
-                                    dashboard.summary.balance,
+                                  FinanceStatCard(
+                                    title: 'Saldo',
+                                    value: formatCurrency(
+                                      dashboard.summary.balance,
+                                    ),
+                                    subtitle: dashboard.summary.balance < 0
+                                        ? '${formatCurrency(dashboard.summary.balance.abs())} negativo'
+                                        : '${dashboard.transactions.length} movimentações',
+                                    subtitleIcon: dashboard.summary.balance < 0
+                                        ? Icons.warning_amber_rounded
+                                        : Icons.trending_up_rounded,
+                                    icon: dashboard.summary.balance < 0
+                                        ? Icons.error_outline_rounded
+                                        : Icons.account_balance_wallet_rounded,
+                                    color: netColor,
                                   ),
-                                  subtitle: dashboard.summary.balance < 0
-                                      ? '${formatCurrency(dashboard.summary.balance.abs())} negativo'
-                                      : '${dashboard.transactions.length} movimentações',
-                                  subtitleIcon: dashboard.summary.balance < 0
-                                      ? Icons.warning_amber_rounded
-                                      : Icons.trending_up_rounded,
-                                  icon: dashboard.summary.balance < 0
-                                      ? Icons.error_outline_rounded
-                                      : Icons.account_balance_wallet_rounded,
-                                  color: netColor,
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
                           ),
                           const SizedBox(height: 18),
                           AnimatedSection(
                             order: 3,
-                            child: FutureBuilder<List<CreditCard>>(
-                              future: vm.cardsFuture,
-                              builder: (context, snapshot) {
-                                return SmartCardRecommendation(
-                                  cards: snapshot.data ?? const [],
-                                  spentByCardId: vm.spentByCardId,
-                                  onViewCards: () => _handleNavSelection(2),
-                                  onAddCard: _openAddCardSheet,
-                                );
-                              },
+                            child: KeyedSubtree(
+                              key: _tourTargets.bestCard,
+                              child: FutureBuilder<List<CreditCard>>(
+                                future: vm.cardsFuture,
+                                builder: (context, snapshot) {
+                                  return SmartCardRecommendation(
+                                    cards: snapshot.data ?? const [],
+                                    spentByCardId: vm.spentByCardId,
+                                    onViewCards: () => _handleNavSelection(2),
+                                    onAddCard: _openAddCardSheet,
+                                  );
+                                },
+                              ),
                             ),
                           ),
                           const SizedBox(height: 14),
                           AnimatedSection(
                             order: 4,
-                            child: CategoryBreakdownCard(
-                              summaries: categorySummaries,
-                              total: dashboard.summary.expense.abs(),
-                              formatCurrency: formatCurrency,
+                            child: KeyedSubtree(
+                              key: _tourTargets.categories,
+                              child: CategoryBreakdownCard(
+                                summaries: categorySummaries,
+                                total: dashboard.summary.expense.abs(),
+                                formatCurrency: formatCurrency,
+                              ),
                             ),
                           ),
                           const SizedBox(height: 14),
                           AnimatedSection(
                             order: 5,
-                            child: topTransactions.isEmpty
-                                ? EmptyStateCard(
-                                    onCreate: _openCreateTransactionSheet,
-                                  )
-                                : RecentTransactionsCard(
-                                    transactions: topTransactions,
-                                    formatCurrency: formatCurrency,
-                                    formatDate: formatDate,
-                                    transactionColor: (transaction) =>
-                                        _transactionColor(transaction.type),
-                                    transactionIcon: _transactionIcon,
-                                    onDelete: _handleDelete,
-                                    onViewAll: () => _handleNavSelection(1),
-                                    onViewTransaction: (tx) =>
-                                        _openEditTransactionSheet(tx),
-                                    deletingIds: vm.deletingIds,
-                                    removingIds: vm.removingIds,
-                                  ),
+                            child: KeyedSubtree(
+                              key: _tourTargets.recent,
+                              child: topTransactions.isEmpty
+                                  ? EmptyStateCard(
+                                      onCreate: _openCreateTransactionSheet,
+                                    )
+                                  : RecentTransactionsCard(
+                                      transactions: topTransactions,
+                                      formatCurrency: formatCurrency,
+                                      formatDate: formatDate,
+                                      transactionColor: (transaction) =>
+                                          _transactionColor(transaction.type),
+                                      transactionIcon: _transactionIcon,
+                                      onDelete: _handleDelete,
+                                      onViewAll: () => _handleNavSelection(1),
+                                      onViewTransaction: (tx) =>
+                                          _openEditTransactionSheet(tx),
+                                      deletingIds: vm.deletingIds,
+                                      removingIds: vm.removingIds,
+                                    ),
+                            ),
                           ),
                           const SizedBox(height: 14),
                           AnimatedSection(
                             order: 6,
-                            child: AiInsightCard(
-                              categorySummaries: categorySummaries,
-                              summary: dashboard.summary,
-                              formatCurrency: formatCurrency,
+                            child: KeyedSubtree(
+                              key: _tourTargets.insight,
+                              child: AiInsightCard(
+                                categorySummaries: categorySummaries,
+                                summary: dashboard.summary,
+                                formatCurrency: formatCurrency,
+                              ),
                             ),
                           ),
                         ],
@@ -574,14 +606,17 @@ class _HomeViewState extends State<_HomeView> {
             Positioned(
               right: 22,
               bottom: bottomPadding + 92,
-              child: FloatingCreateButton(
-                key: ValueKey(_selectedNavIndex),
-                onPressed: _selectedNavIndex == 1
-                    ? _openCreateTransactionSheet
-                    : _openAddCardSheet,
-                semanticLabel: _selectedNavIndex == 1
-                    ? 'Novo lançamento'
-                    : 'Novo cartão',
+              child: KeyedSubtree(
+                key: _tourTargets.createButton,
+                child: FloatingCreateButton(
+                  key: ValueKey(_selectedNavIndex),
+                  onPressed: _selectedNavIndex == 1
+                      ? _openCreateTransactionSheet
+                      : _openAddCardSheet,
+                  semanticLabel: _selectedNavIndex == 1
+                      ? 'Novo lançamento'
+                      : 'Novo cartão',
+                ),
               ),
             ),
           Positioned(
@@ -589,12 +624,23 @@ class _HomeViewState extends State<_HomeView> {
             right: 18,
             bottom: bottomPadding + 12,
             child: FloatingBottomBar(
+              itemKeys: _tourTargets.nav,
               pageController: _pageController,
               selectedIndex: _selectedNavIndex,
               onSelected: _handleNavSelection,
             ),
           ),
-          HomeSplashOverlay(ready: _initialLoad),
+          HomeSplashOverlay(ready: _initialLoad, onDismissed: _maybeStartTour),
+          if (_showTour)
+            Positioned.fill(
+              child: OnboardingTour(
+                userId: vm.session.user.id,
+                firstName: firstName,
+                targets: _tourTargets,
+                onGoToPage: _handleNavSelection,
+                onFinish: () => setState(() => _showTour = false),
+              ),
+            ),
         ],
       ),
     );
