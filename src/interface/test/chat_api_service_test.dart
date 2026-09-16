@@ -139,6 +139,37 @@ void main() {
     );
   });
 
+  test('confirmAction throws with the server message when the tool rejects it',
+      () async {
+    final client = MockClient((request) async {
+      expect(request.url.path, '/chat/confirm');
+      return http.Response(
+        jsonEncode({
+          'statusCode': 400,
+          'message': 'source é "Crédito" mas cardId não foi informado.',
+        }),
+        400,
+      );
+    });
+
+    final service = ChatApiService(
+      apiBaseUrl: 'https://api.example.com',
+      accessTokenProvider: () => 'token-123',
+      client: client,
+    );
+
+    await expectLater(
+      service.confirmAction('create_transaction', {'title': 'Cinema'}),
+      throwsA(
+        isA<Exception>().having(
+          (e) => e.toString(),
+          'message',
+          contains('cardId não foi informado'),
+        ),
+      ),
+    );
+  });
+
   test('streamMessage throws when the session is empty', () async {
     final service = ChatApiService(
       apiBaseUrl: 'https://api.example.com',

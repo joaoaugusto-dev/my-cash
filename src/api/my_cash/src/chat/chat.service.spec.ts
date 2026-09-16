@@ -19,7 +19,11 @@ function makeService(
 ) {
   return new ChatService(
     { get: (key: string) => config[key] } as unknown as ConfigService,
-    { run: jest.fn().mockResolvedValue('{}'), ...tools } as unknown as ChatTools,
+    {
+      run: jest.fn().mockResolvedValue('{}'),
+      validateWrite: jest.fn().mockReturnValue(null),
+      ...tools,
+    } as unknown as ChatTools,
   );
 }
 
@@ -208,6 +212,108 @@ describe('ChatService', () => {
       tool: 'create_transaction',
       args: { title: 'Mercado', amount: 50 },
     });
+  });
+
+  it('feeds a validation error back instead of proposing a broken pending action', async () => {
+    const run = jest.fn().mockResolvedValue('{}');
+    const validateWrite = jest
+      .fn()
+      .mockReturnValueOnce({ error: 'source é "Crédito" mas cardId não foi informado.' })
+      .mockReturnValueOnce(null);
+    jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValueOnce(
+        toolCallResponse('create_transaction', {
+          title: 'Cinema',
+          amount: 40,
+          source: 'Crédito',
+        }),
+      )
+      .mockResolvedValueOnce(
+        toolCallResponse('create_transaction', {
+          title: 'Cinema',
+          amount: 40,
+          source: 'Crédito',
+          cardId: 'card-1',
+        }),
+      );
+    const service = makeService(
+      { GEMINI_APIKEY: 'key', GEMINI_MODEL: 'model' },
+      { run, validateWrite },
+    );
+    const { res, chunks } = makeRes();
+
+    await service.streamReply([{ role: 'user', content: 'gastei 40 no crédito' }], ctx, res);
+
+    // Never shown as a pending action the first time — the validation error
+    // routes back into the conversation as a tool result instead.
+    expect(run).not.toHaveBeenCalled();
+    const body = chunks.join('');
+    const start = body.indexOf(PENDING_ACTION_PREFIX) + PENDING_ACTION_PREFIX.length;
+    const end = body.indexOf(PENDING_ACTION_SUFFIX, start);
+    expect(JSON.parse(body.slice(start, end))).toEqual({
+      tool: 'create_transaction',
+      args: { title: 'Cinema', amount: 40, source: 'Crédito', cardId: 'card-1' },
+    });
+  });
+
+  it('runs a read call bundled with a write call, deferring the write instead of guessing', async () => {
+    const run = jest.fn().mockResolvedValue('[{"id":"card-1","name":"Nubank"}]');
+    jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValueOnce(
+        sseResponse([
+          { functionCall: { name: 'list_cards', args: {} } },
+          {
+            functionCall: {
+              name: 'create_transaction',
+              args: { title: 'Cinema', amount: 40, source: 'Crédito', cardId: 'guess' },
+            },
+          },
+        ]),
+      )
+      .mockResolvedValueOnce(
+        toolCallResponse('create_transaction', {
+          title: 'Cinema',
+          amount: 40,
+          source: 'Crédito',
+          cardId: 'card-1',
+        }),
+      );
+    const validateWrite = jest.fn().mockReturnValue(null);
+    const service = makeService(
+      { GEMINI_APIKEY: 'key', GEMINI_MODEL: 'model' },
+      { run, validateWrite },
+    );
+    const { res, chunks } = makeRes();
+
+    await service.streamReply([{ role: 'user', content: 'gastei 40 no crédito' }], ctx, res);
+
+    // Only the read call (list_cards) actually ran — the bundled write call
+    // was dropped, not executed with its guessed cardId.
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(run).toHaveBeenCalledWith(ctx, 'list_cards', {});
+    const body = chunks.join('');
+    const start = body.indexOf(PENDING_ACTION_PREFIX) + PENDING_ACTION_PREFIX.length;
+    const end = body.indexOf(PENDING_ACTION_SUFFIX, start);
+    expect(JSON.parse(body.slice(start, end))).toEqual({
+      tool: 'create_transaction',
+      args: { title: 'Cinema', amount: 40, source: 'Crédito', cardId: 'card-1' },
+    });
+  });
+
+  it('confirmAction rejects when the tool run returns an error instead of saving', async () => {
+    const run = jest
+      .fn()
+      .mockResolvedValue('{"error":"source é \\"Crédito\\" mas cardId não foi informado."}');
+    const service = makeService(
+      { GEMINI_APIKEY: 'key', GEMINI_MODEL: 'model' },
+      { run },
+    );
+
+    await expect(
+      service.confirmAction(ctx, 'create_transaction', { title: 'Cinema', amount: 40 }),
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('confirmAction runs the write tool directly with no Gemini call', async () => {

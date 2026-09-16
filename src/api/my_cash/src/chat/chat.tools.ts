@@ -320,6 +320,18 @@ export class ChatTools {
   }
 
   /**
+   * Same check as [creditWithoutCardError], exposed for chat.service.ts to
+   * run BEFORE proposing a write as a pending action — catching it here
+   * means the user never sees a preview card that would fail on confirm.
+   */
+  validateWrite(name: string, args: ToolArgs): { error: string } | null {
+    if (name !== 'create_transaction' && name !== 'update_transaction') {
+      return null;
+    }
+    return this.creditWithoutCardError(this.toDto(args));
+  }
+
+  /**
    * A deterministic backstop for the prompt's "call list_cards before
    * create_transaction" rule — the model doesn't always follow it, so a
    * transaction with source "Crédito" and no cardId is rejected here and

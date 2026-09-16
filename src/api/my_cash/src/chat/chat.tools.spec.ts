@@ -50,4 +50,31 @@ describe('ChatTools', () => {
 
     expect(create).toHaveBeenCalled();
   });
+
+  it('validateWrite catches the same credit-without-card case before the tool ever runs', () => {
+    const tools = makeTools();
+
+    expect(
+      tools.validateWrite('create_transaction', {
+        title: 'Bolo',
+        amount: 10,
+        source: 'Crédito',
+      }),
+    ).toEqual({ error: expect.stringContaining('list_cards') });
+
+    expect(
+      tools.validateWrite('create_transaction', {
+        title: 'Bolo',
+        amount: 10,
+        source: 'Crédito',
+        cardId: 'card-1',
+      }),
+    ).toBeNull();
+  });
+
+  it('validateWrite ignores tools it has no rule for', () => {
+    const tools = makeTools();
+    expect(tools.validateWrite('delete_transaction', { id: 'tx-1' })).toBeNull();
+    expect(tools.validateWrite('list_cards', {})).toBeNull();
+  });
 });
