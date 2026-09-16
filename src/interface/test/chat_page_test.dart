@@ -131,4 +131,59 @@ void main() {
       expect(find.text('Salvo'), findsOneWidget);
     },
   );
+
+  testWidgets(
+    'a confirm rejected by the backend shows as failed, not saved',
+    (tester) async {
+      var refreshes = 0;
+      final apiService = ChatApiService(
+        apiBaseUrl: 'https://api.example.com',
+        accessTokenProvider: () => 'token-123',
+        client: MockClient.streaming((request, bodyStream) async {
+          if (request.url.path.endsWith('/chat/confirm')) {
+            return http.StreamedResponse(
+              Stream.value(
+                utf8.encode(
+                  '{"statusCode":400,"message":"source é \\"Crédito\\" mas '
+                  'cardId não foi informado."}',
+                ),
+              ),
+              400,
+            );
+          }
+          return http.StreamedResponse(
+            Stream.value(
+              utf8.encode(
+                'Beleza! [[mycash:pending:{"tool":"create_transaction",'
+                '"args":{"title":"Cinema","amount":40,"source":"Crédito"}}]]',
+              ),
+            ),
+            200,
+          );
+        }),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ChatPage(
+              apiService: apiService,
+              onDataChanged: () => refreshes++,
+            ),
+          ),
+        ),
+      );
+      await tester.enterText(find.byType(TextField), 'gastei 40 no crédito');
+      await tester.pump();
+      await tester.tap(find.byIcon(Icons.send_rounded));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Confirmar'));
+      await tester.pumpAndSettle();
+
+      expect(refreshes, 0);
+      expect(find.text('Salvo'), findsNothing);
+      expect(find.text('Falhou ao salvar.'), findsOneWidget);
+    },
+  );
 }

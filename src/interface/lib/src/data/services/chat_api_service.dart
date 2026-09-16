@@ -92,9 +92,22 @@ class ChatApiService {
       body: jsonEncode({'tool': tool, 'args': args}),
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception('Não consegui salvar (${response.statusCode}).');
+      throw Exception(_messageFrom(response.body) ?? 'Não consegui salvar.');
     }
     return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  /// Nest's exception filter shapes an error body as `{"message": "..."}` —
+  /// pulled out so a validation failure (e.g. missing cardId) reaches the
+  /// user as the actual reason instead of a bare status code.
+  String? _messageFrom(String body) {
+    try {
+      final decoded = jsonDecode(body);
+      final message = decoded is Map ? decoded['message'] : null;
+      if (message is String) return message;
+      if (message is List) return message.join(', ');
+    } catch (_) {}
+    return null;
   }
 
   Uri _uri(String path) {

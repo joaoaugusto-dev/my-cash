@@ -192,7 +192,7 @@ class _ChatPageState extends State<ChatPage> {
       // the message reaches the screen.
       if (mounted) {
         setState(() {
-          _messages.add(ChatMessage.assistantText('⚠️ $error'));
+          _messages.add(ChatMessage.assistantText('⚠️ ${_describeError(error)}'));
           _capMessages();
         });
       }
@@ -426,6 +426,13 @@ class _ChatPageState extends State<ChatPage> {
         final seconds = message.audioDuration?.inSeconds ?? 0;
         return 'Enviei um áudio de ${seconds}s.';
     }
+  }
+
+  /// `Exception('msg')` stringifies as `"Exception: msg"` — the raw
+  /// `toString()` of a thrown error should never reach the chat as-is.
+  String _describeError(Object error) {
+    final text = error.toString();
+    return text.startsWith('Exception: ') ? text.substring(11) : text;
   }
 
   void _sendText(String text) => _send(ChatMessage.userText(text));

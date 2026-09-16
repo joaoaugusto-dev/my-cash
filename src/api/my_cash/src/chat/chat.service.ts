@@ -164,12 +164,58 @@ export class ChatService {
           break;
         }
 
-        // A write call ends the turn right here: its args go to the client as
-        // a pending action for the user to confirm, never executed by us.
-        const pendingCall = result.toolCalls.find((call) =>
+        const writeCalls = result.toolCalls.filter((call) =>
           WRITE_TOOLS.has(call.name),
         );
-        if (pendingCall) {
+        const readCalls = result.toolCalls.filter(
+          (call) => !WRITE_TOOLS.has(call.name),
+        );
+
+        // A write call ends the turn right here: its args go to the client as
+        // a pending action for the user to confirm, never executed by us —
+        // but only when it's the round's sole call. Bundled with a read call
+        // (e.g. list_cards + create_transaction, which the prompt asks the
+        // model to do together), Gemini's parallel calls are built without
+        // seeing each other's result, so the write's args may still be a
+        // guess (e.g. a made-up cardId) — falling through below runs the
+        // read and lets the model reissue the write once it has the answer.
+        if (writeCalls.length > 0 && readCalls.length === 0) {
+          const pendingCall = writeCalls[0];
+          const validationError = this.tools.validateWrite(
+            pendingCall.name,
+            pendingCall.args,
+          );
+          if (validationError) {
+            // Same treatment as any other tool result: fed back so the model
+            // corrects itself (e.g. calls list_cards) instead of the user
+            // seeing a preview card that would fail on confirm.
+            conversation.push({
+              role: 'model',
+              parts: [
+                ...(result.text ? [{ text: result.text }] : []),
+                {
+                  functionCall: {
+                    name: pendingCall.name,
+                    args: pendingCall.args,
+                  },
+                  thoughtSignature: pendingCall.thoughtSignature,
+                },
+              ],
+            });
+            conversation.push({
+              role: 'function',
+              parts: [
+                {
+                  functionResponse: {
+                    name: pendingCall.name,
+                    response: { result: validationError },
+                  },
+                },
+              ],
+            });
+            continue;
+          }
+
           wroteText = true;
           write(
             `\n${PENDING_ACTION_PREFIX}${JSON.stringify({
@@ -184,14 +230,14 @@ export class ChatService {
           role: 'model',
           parts: [
             ...(result.text ? [{ text: result.text }] : []),
-            ...result.toolCalls.map((call) => ({
+            ...readCalls.map((call) => ({
               functionCall: { name: call.name, args: call.args },
               thoughtSignature: call.thoughtSignature,
             })),
           ],
         });
 
-        for (const call of result.toolCalls) {
+        for (const call of readCalls) {
           const output = await this.tools.run(ctx, call.name, call.args);
           conversation.push({
             role: 'function',
@@ -237,7 +283,15 @@ export class ChatService {
     if (!WRITE_TOOLS.has(tool)) {
       throw new BadRequestException(`ação inválida: ${tool}`);
     }
-    return JSON.parse(await this.tools.run(ctx, tool, args ?? {}));
+    const result = JSON.parse(await this.tools.run(ctx, tool, args ?? {}));
+    // The tool run catches its own failures into `{ error }` so a streaming
+    // turn can feed them back to the model — but confirm has no model turn
+    // to react, so a 200 with that shape here would read to the client as
+    // success. Surface it as the failure it is.
+    if (result && typeof result === 'object' && 'error' in result) {
+      throw new BadRequestException(String(result.error));
+    }
+    return result;
   }
 
   /**
